@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", "Times New Roman", serif;
+
+  --color-background: #f3eee4;
+  --color-foreground: #1b1915;
+  --color-card: #fbf7f0;
+  --color-card-foreground: #1b1915;
+  --color-muted: #e8e0d2;
+  --color-muted-foreground: #6d675e;
+  --color-popover: #fbf7f0;
+  --color-popover-foreground: #1b1915;
+  --color-border: #d9d0c1;
+  --color-input: #d9d0c1;
+  --color-primary: #2f4a3c;
+  --color-primary-foreground: #f4f0e8;
+  --color-secondary: #ece4d6;
+  --color-secondary-foreground: #1b1915;
+  --color-accent: #e4dccb;
+  --color-accent-foreground: #1b1915;
+  --color-destructive: #8a2f2f;
+  --color-destructive-foreground: #fbf7f0;
+  --color-ring: #2f4a3c;
+
+  --color-sage: #2f4a3c;
+  --color-ink: #243044;
+  --color-clay: #7a4a38;
+  --color-slate: #4a5560;
+  --color-olive: #4d5338;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 1.75rem;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+    background: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

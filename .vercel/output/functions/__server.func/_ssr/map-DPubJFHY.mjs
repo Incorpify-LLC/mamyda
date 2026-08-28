@@ -1,0 +1,169 @@
+import { r as parseLabels } from "./utils-BeBjTMyx.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/map-DPubJFHY.js
+function iso(v) {
+	if (v == null) return null;
+	if (v instanceof Date) return v.toISOString();
+	if (typeof v === "string") return v;
+	return String(v);
+}
+function reqIso(v) {
+	return iso(v) ?? (/* @__PURE__ */ new Date()).toISOString();
+}
+function bool(v) {
+	return v === true || v === "t" || v === "true" || v === 1 || v === "1";
+}
+function num(v) {
+	if (typeof v === "number") return v;
+	if (typeof v === "string") return Number(v);
+	return 0;
+}
+function str(v) {
+	if (v == null) return null;
+	return String(v);
+}
+function mapProfile(row) {
+	return {
+		userId: String(row.user_id),
+		timezone: String(row.timezone ?? "Asia/Kolkata"),
+		displayName: str(row.display_name),
+		seededAt: iso(row.seeded_at),
+		vaultPublicKey: str(row.vault_public_key),
+		vaultPrivateKeyArmored: str(row.vault_private_key_armored),
+		vaultKeyCreatedAt: iso(row.vault_key_created_at),
+		alertEmail: str(row.alert_email),
+		alertsDueSoon: bool(row.alerts_due_soon),
+		alertsOverdue: bool(row.alerts_overdue),
+		alertsMeeting: bool(row.alerts_meeting)
+	};
+}
+function mapClient(row) {
+	return {
+		id: String(row.id),
+		name: String(row.name),
+		color: String(row.color ?? "sage"),
+		email: str(row.email),
+		notes: str(row.notes),
+		archived: bool(row.archived),
+		isSample: bool(row.is_sample),
+		createdAt: reqIso(row.created_at)
+	};
+}
+function mapProject(row) {
+	return {
+		id: String(row.id),
+		clientId: String(row.client_id),
+		name: String(row.name),
+		slug: String(row.slug),
+		description: str(row.description),
+		archived: bool(row.archived),
+		isSample: bool(row.is_sample),
+		createdAt: reqIso(row.created_at)
+	};
+}
+function mapTask(row) {
+	return {
+		id: String(row.id),
+		projectId: String(row.project_id),
+		title: String(row.title),
+		notes: str(row.notes),
+		columnId: String(row.column_id),
+		priority: String(row.priority),
+		dueAt: iso(row.due_at),
+		labels: parseLabels(str(row.labels) ?? "[]"),
+		position: num(row.position),
+		isSample: bool(row.is_sample),
+		createdAt: reqIso(row.created_at)
+	};
+}
+function mapSource(row) {
+	return {
+		id: String(row.id),
+		provider: String(row.provider),
+		name: String(row.name),
+		icsUrl: str(row.ics_url),
+		enabled: bool(row.enabled),
+		lastSyncedAt: iso(row.last_synced_at),
+		lastError: str(row.last_error)
+	};
+}
+function mapEvent(row) {
+	let attendees = [];
+	try {
+		const parsed = JSON.parse(String(row.attendees ?? "[]"));
+		if (Array.isArray(parsed)) attendees = parsed.map(String);
+	} catch {
+		attendees = [];
+	}
+	return {
+		id: String(row.id),
+		sourceId: str(row.source_id),
+		sourceProvider: String(row.source_provider),
+		externalId: str(row.external_id),
+		title: String(row.title),
+		description: str(row.description),
+		location: str(row.location),
+		startsAt: reqIso(row.starts_at),
+		endsAt: iso(row.ends_at),
+		allDay: bool(row.all_day),
+		attendees,
+		projectId: str(row.project_id),
+		isSample: bool(row.is_sample)
+	};
+}
+function mapMinute(row) {
+	return {
+		id: String(row.id),
+		eventId: str(row.event_id),
+		projectId: str(row.project_id),
+		title: String(row.title),
+		attendees: String(row.attendees ?? ""),
+		body: String(row.body ?? ""),
+		createdAt: reqIso(row.created_at),
+		updatedAt: reqIso(row.updated_at)
+	};
+}
+function mapNote(row, tags = []) {
+	return {
+		id: String(row.id),
+		projectId: str(row.project_id),
+		title: String(row.title),
+		body: String(row.body ?? ""),
+		tags,
+		createdAt: reqIso(row.created_at),
+		updatedAt: reqIso(row.updated_at)
+	};
+}
+function mapVault(row) {
+	return {
+		id: String(row.id),
+		title: String(row.title),
+		createdAt: reqIso(row.created_at),
+		updatedAt: reqIso(row.updated_at)
+	};
+}
+function mapAlert(row) {
+	return {
+		id: String(row.id),
+		kind: String(row.kind),
+		title: String(row.title),
+		body: String(row.body),
+		entityType: str(row.entity_type),
+		entityId: str(row.entity_id),
+		scheduledFor: reqIso(row.scheduled_for),
+		sentAt: iso(row.sent_at),
+		status: String(row.status)
+	};
+}
+function mapEmail(row) {
+	return {
+		id: String(row.id),
+		toAddress: String(row.to_address),
+		fromAddress: String(row.from_address),
+		subject: String(row.subject),
+		body: String(row.body),
+		status: String(row.status),
+		createdAt: reqIso(row.created_at)
+	};
+}
+//#endregion
+export { mapMinute as a, mapProject as c, mapVault as d, mapEvent as i, mapSource as l, mapClient as n, mapNote as o, mapEmail as r, mapProfile as s, mapAlert as t, mapTask as u };
