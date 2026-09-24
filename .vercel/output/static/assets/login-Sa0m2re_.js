@@ -1,1 +1,0 @@
-function e(e){return e.ok===!1&&e.loginRequired===!0}function t(){try{return window.self!==window.top}catch{return!0}}function n(n){if(!e(n))return!1;let r=n.loginUrl;if(!r||typeof window>`u`)return!1;if(t()){let e=window.open(r,`_blank`);if(e)return e.opener=null,!0}return window.location.assign(r),!0}export{n as t};
