@@ -3,59 +3,13 @@ import { useEffect, useState } from "react";
 import { authClient, authEnabled } from "@/lib/auth/client";
 import { turnstileSiteKey } from "@/lib/auth/public-config";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { TurnstileField, type TurnstileStatus } from "@/components/turnstile-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 
 export const Route = createFileRoute("/login")({ component: Login });
-
-function TurnstileBox({
-  siteKey,
-  resetKey,
-  onToken,
-}: {
-  siteKey: string;
-  resetKey: number;
-  onToken: (token: string) => void;
-}) {
-  useEffect(() => {
-    if (!siteKey) return;
-    const holder = document.getElementById("turnstile-slot");
-    if (!holder) return;
-    let widgetId = "";
-    const render = () => {
-      const turnstile = (window as unknown as {
-        turnstile?: { render: (el: HTMLElement, opts: Record<string, unknown>) => string; remove: (id: string) => void };
-      }).turnstile;
-      if (!turnstile) return;
-      holder.replaceChildren();
-      widgetId = turnstile.render(holder, {
-        sitekey: siteKey,
-        callback: (token: string) => onToken(token),
-        "error-callback": () => onToken(""),
-      });
-    };
-    const existing = document.querySelector<HTMLScriptElement>("script[data-turnstile]");
-    if (existing && (window as unknown as { turnstile?: unknown }).turnstile) render();
-    else if (!existing) {
-      const script = document.createElement("script");
-      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-      script.async = true;
-      script.dataset.turnstile = "1";
-      script.onload = render;
-      document.head.appendChild(script);
-    } else {
-      existing.addEventListener("load", render, { once: true });
-    }
-    return () => {
-      const turnstile = (window as unknown as { turnstile?: { remove: (id: string) => void } }).turnstile;
-      if (widgetId && turnstile) turnstile.remove(widgetId);
-    };
-  }, [siteKey, resetKey, onToken]);
-  if (!siteKey) return null;
-  return <div id="turnstile-slot" className="min-h-16" />;
-}
 
 function Login() {
   const { user, isPending } = useCurrentUserState();
@@ -67,11 +21,25 @@ function Login() {
   const [siteKey, setSiteKey] = useState("");
   const [widgetKey, setWidgetKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resendAt, setResendAt] = useState(0);
+  const [resendSeconds, setResendSeconds] = useState(0);
+  const [captchaStatus, setCaptchaStatus] = useState<TurnstileStatus>("loading");
 
   useEffect(() => {
-    void turnstileSiteKey().then(setSiteKey).catch(() => setSiteKey(""));
+    void turnstileSiteKey()
+      .then(setSiteKey)
+      .catch(() => setSiteKey(""));
   }, []);
+
+  useEffect(() => {
+    const update = () => setResendSeconds(Math.max(0, Math.ceil((resendAt - Date.now()) / 1000)));
+    update();
+    if (!resendAt || resendAt <= Date.now()) return;
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendAt]);
 
   if (isPending) {
     return (
@@ -88,6 +56,7 @@ function Login() {
   async function sendCode(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     if (siteKey && !token) {
       setError("Complete the check above, then ask for the code again.");
       return;
@@ -103,8 +72,11 @@ function Login() {
       setStep("code");
       setToken("");
       setWidgetKey((value) => value + 1);
+      setResendAt(Date.now() + 30_000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send the code");
+      setToken("");
+      setWidgetKey((value) => value + 1);
     } finally {
       setBusy(false);
     }
@@ -113,6 +85,7 @@ function Login() {
   async function submitCode(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     if (siteKey && !token) {
       setError("Complete the check above, then enter the code.");
       return;
@@ -128,6 +101,33 @@ function Login() {
       window.location.href = "/";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");
+      setToken("");
+      setWidgetKey((value) => value + 1);
+      setBusy(false);
+    }
+  }
+
+  async function resendCode() {
+    setError(null);
+    setSuccess(null);
+    setBusy(true);
+    try {
+      const result = await authClient.$fetch("/email-otp/send-verification-otp", {
+        method: "POST",
+        body: { email, type: "sign-in" },
+        headers: token ? { "x-captcha-response": token } : undefined,
+      });
+      if (result.error) throw new Error(result.error.message ?? "Could not resend the code");
+      setOtp("");
+      setToken("");
+      setWidgetKey((value) => value + 1);
+      setResendAt(Date.now() + 30_000);
+      setSuccess("A new sign-in code has been sent.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resend the code");
+      setToken("");
+      setWidgetKey((value) => value + 1);
+    } finally {
       setBusy(false);
     }
   }
@@ -146,8 +146,15 @@ function Login() {
             <form className="space-y-4" onSubmit={(event) => void sendCode(event)}>
               <div className="space-y-1.5">
                 <Label htmlFor="name">Name</Label>
-                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
-                <p className="text-xs text-muted-foreground">Used only the first time this email signs in.</p>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used only the first time this email signs in.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email</Label>
@@ -160,9 +167,24 @@ function Login() {
                   autoComplete="email"
                 />
               </div>
-              <TurnstileBox siteKey={siteKey} resetKey={widgetKey} onToken={setToken} />
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <Button type="submit" className="w-full" disabled={busy}>
+              {siteKey && (
+                <TurnstileField
+                  action="auth-sign-in"
+                  resetKey={widgetKey}
+                  onToken={setToken}
+                  onStatus={setCaptchaStatus}
+                />
+              )}
+              {error && (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={busy || (Boolean(siteKey) && (!token || captchaStatus !== "verified"))}
+              >
                 {busy ? "Please wait…" : "Email me a code"}
               </Button>
             </form>
@@ -182,10 +204,47 @@ function Login() {
                   onChange={(e) => setOtp(e.target.value)}
                 />
               </div>
-              <TurnstileBox siteKey={siteKey} resetKey={widgetKey} onToken={setToken} />
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <Button type="submit" className="w-full" disabled={busy}>
+              {siteKey && (
+                <TurnstileField
+                  action="auth-sign-in"
+                  resetKey={widgetKey}
+                  onToken={setToken}
+                  onStatus={setCaptchaStatus}
+                />
+              )}
+              {error && (
+                <p role="alert" aria-live="polite" className="text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              {success && (
+                <p role="status" aria-live="polite" className="text-sm text-green-700">
+                  {success}
+                </p>
+              )}
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={busy || (Boolean(siteKey) && (!token || captchaStatus !== "verified"))}
+              >
                 {busy ? "Please wait…" : "Sign in"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                disabled={
+                  busy ||
+                  resendSeconds > 0 ||
+                  (Boolean(siteKey) && (!token || captchaStatus !== "verified"))
+                }
+                onClick={() => void resendCode()}
+              >
+                {resendSeconds > 0
+                  ? `Resend code in ${resendSeconds}s`
+                  : busy
+                    ? "Sending…"
+                    : "Resend code"}
               </Button>
               <button
                 type="button"
@@ -194,6 +253,7 @@ function Login() {
                   setStep("email");
                   setOtp("");
                   setError(null);
+                  setSuccess(null);
                   setToken("");
                   setWidgetKey((value) => value + 1);
                 }}

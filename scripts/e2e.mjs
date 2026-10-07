@@ -19,6 +19,9 @@ async function signInWithCode(email, name) {
     );
   const { otp } = await sink.json();
   await page.getByLabel("Code", { exact: true }).fill(otp);
+  const resend = page.getByRole("button", { name: /Resend code in/ });
+  await resend.waitFor();
+  assert.equal(await resend.isDisabled(), true);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
 }
 try {

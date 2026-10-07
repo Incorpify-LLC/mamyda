@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TurnstileField } from "@/components/turnstile-field";
+import { TurnstileField, type TurnstileStatus } from "@/components/turnstile-field";
 import { addIcsSource, connectProvider, removeSource } from "@/lib/mamyda/calendar";
 import { useAlerts, useCalendar, useWorkspace } from "@/lib/mamyda/hooks";
 import { beginTelegramLink } from "@/lib/mamyda/telegram";
@@ -28,22 +28,20 @@ function SettingsPage() {
   const [icsName, setIcsName] = useState("Zoho");
   const [icsUrl, setIcsUrl] = useState("");
   const [email, setEmail] = useState<string | null>(null);
-  const [calendarCaptcha, setCalendarCaptcha] = useState("");
-  const [calendarCaptchaKey, setCalendarCaptchaKey] = useState(0);
-  const [calendarConnectCaptcha, setCalendarConnectCaptcha] = useState("");
-  const [calendarConnectCaptchaKey, setCalendarConnectCaptchaKey] = useState(0);
-  const [profileCaptcha, setProfileCaptcha] = useState("");
-  const [profileCaptchaKey, setProfileCaptchaKey] = useState(0);
-  const [testCaptcha, setTestCaptcha] = useState("");
-  const [testCaptchaKey, setTestCaptchaKey] = useState(0);
+  const [captchaAction, setCaptchaAction] = useState<
+    "calendar-connect" | "calendar-feed" | "profile-update" | "alerts-test" | "telegram-link" | null
+  >(null);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const [captchaStatus, setCaptchaStatus] = useState<TurnstileStatus>("unavailable");
+  const [captchaError, setCaptchaError] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Array<{
     channel: string;
     status: string;
     attempts: number;
     error: string | null;
   }> | null>(null);
-  const [telegramCaptcha, setTelegramCaptcha] = useState("");
-  const [telegramCaptchaKey, setTelegramCaptchaKey] = useState(0);
   const [alertPrefs, setAlertPrefs] = useState({
     dueSoon: true,
     overdue: true,
@@ -56,9 +54,60 @@ function SettingsPage() {
     username: string;
     link: string;
   } | null>(null);
+  const [connectTarget, setConnectTarget] = useState<"google" | "outlook" | null>(null);
   const [section, setSection] = useState<"calendars" | "alerts" | "workspace">("calendars");
 
   const alertEmail = email ?? profile?.alertEmail ?? "";
+
+  function requestCaptcha(action: NonNullable<typeof captchaAction>) {
+    setCaptchaAction(action);
+    setCaptchaToken("");
+    setCaptchaError(null);
+    setCaptchaStatus("loading");
+    setCaptchaKey((value) => value + 1);
+  }
+
+  function resetCaptcha() {
+    setCaptchaAction(null);
+    setCaptchaToken("");
+    setCaptchaError(null);
+    setCaptchaStatus("unavailable");
+    setCaptchaKey((value) => value + 1);
+  }
+
+  function retryCaptcha() {
+    setCaptchaToken("");
+    setCaptchaStatus("loading");
+    setCaptchaKey((value) => value + 1);
+  }
+
+  const captchaReady = (action: NonNullable<typeof captchaAction>) =>
+    captchaAction === action && captchaStatus === "verified" && Boolean(captchaToken);
+
+  async function connectCalendar(provider: "google" | "outlook") {
+    if (!captchaReady("calendar-connect")) {
+      setConnectTarget(provider);
+      if (captchaAction !== "calendar-connect") requestCaptcha("calendar-connect");
+      return;
+    }
+    setBusyAction("calendar-connect");
+    try {
+      const result = await connectProvider({
+        data: { provider },
+        headers: { "x-turnstile-response": captchaToken },
+      });
+      window.location.assign(result.authorizationUrl);
+    } catch (error) {
+      setCaptchaError(
+        error instanceof Error ? error.message : "Calendar connection failed. Retry.",
+      );
+      setCaptchaToken("");
+      setCaptchaStatus("loading");
+      setCaptchaKey((value) => value + 1);
+    } finally {
+      setBusyAction(null);
+    }
+  }
 
   useEffect(() => {
     if (!profile) return;
@@ -139,79 +188,80 @@ function SettingsPage() {
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
                 variant="outline"
-                onClick={async () => {
-                  try {
-                    const result = await connectProvider({
-                      data: { provider: "google" },
-                      headers: calendarConnectCaptcha
-                        ? { "x-turnstile-response": calendarConnectCaptcha }
-                        : undefined,
-                    });
-                    setCalendarConnectCaptcha("");
-                    setCalendarConnectCaptchaKey((value) => value + 1);
-                    window.location.assign(result.authorizationUrl);
-                  } catch (error) {
-                    toast.error(
-                      error instanceof Error
-                        ? error.message
-                        : "Google Calendar is not available yet.",
-                    );
-                  }
-                }}
+                disabled={
+                  busyAction === "calendar-connect" ||
+                  (captchaAction === "calendar-connect" && !captchaReady("calendar-connect"))
+                }
+                onClick={() => void connectCalendar("google")}
               >
-                Connect Gmail
+                {connectTarget === "google" && captchaAction === "calendar-connect"
+                  ? "Continue to Google"
+                  : "Connect Google Calendar"}
               </Button>
               <Button
                 variant="outline"
-                onClick={async () => {
-                  try {
-                    const result = await connectProvider({
-                      data: { provider: "outlook" },
-                      headers: calendarConnectCaptcha
-                        ? { "x-turnstile-response": calendarConnectCaptcha }
-                        : undefined,
-                    });
-                    setCalendarConnectCaptcha("");
-                    setCalendarConnectCaptchaKey((value) => value + 1);
-                    window.location.assign(result.authorizationUrl);
-                  } catch (error) {
-                    toast.error(
-                      error instanceof Error
-                        ? error.message
-                        : "Outlook Calendar is not available yet.",
-                    );
-                  }
-                }}
+                disabled={
+                  busyAction === "calendar-connect" ||
+                  (captchaAction === "calendar-connect" && !captchaReady("calendar-connect"))
+                }
+                onClick={() => void connectCalendar("outlook")}
               >
-                Connect Outlook
+                {connectTarget === "outlook" && captchaAction === "calendar-connect"
+                  ? "Continue to Microsoft"
+                  : "Connect Microsoft Calendar"}
               </Button>
             </div>
-            <TurnstileField
-              action="calendar-connect"
-              resetKey={calendarConnectCaptchaKey}
-              onToken={setCalendarConnectCaptcha}
-            />
+            {captchaAction === "calendar-connect" && (
+              <div className="mt-3">
+                {captchaError && (
+                  <p role="alert" className="mb-2 text-sm text-destructive">
+                    {captchaError}
+                  </p>
+                )}
+                <TurnstileField
+                  action="calendar-connect"
+                  resetKey={captchaKey}
+                  onToken={setCaptchaToken}
+                  onStatus={setCaptchaStatus}
+                />
+              </div>
+            )}
             <form
               className="mt-5 grid gap-3 sm:grid-cols-[8rem_1fr_auto]"
               onSubmit={async (e) => {
                 e.preventDefault();
-                const result = await addIcsSource({
-                  data: { name: icsName, url: icsUrl, provider: "zoho" },
-                  headers: calendarCaptcha
-                    ? { "x-turnstile-response": calendarCaptcha }
-                    : undefined,
-                });
-                setCalendarCaptcha("");
-                setCalendarCaptchaKey((value) => value + 1);
-                await cal.refetch();
-                if (!result.ok) {
-                  toast.error(`Calendar feed was saved, but could not sync: ${result.error}`);
+                if (!captchaReady("calendar-feed")) {
+                  if (captchaAction !== "calendar-feed") requestCaptcha("calendar-feed");
                   return;
                 }
-                setIcsUrl("");
-                toast.success(
-                  `Calendar feed added — ${result.eventCount} upcoming event${result.eventCount === 1 ? "" : "s"} found.`,
-                );
+                setBusyAction("calendar-feed");
+                try {
+                  const result = await addIcsSource({
+                    data: { name: icsName, url: icsUrl, provider: "zoho" },
+                    headers: { "x-turnstile-response": captchaToken },
+                  });
+                  await cal.refetch();
+                  if (!result.ok) {
+                    setIcsUrl("");
+                    resetCaptcha();
+                    setCaptchaError(
+                      `Feed saved, but sync failed: ${result.error}. You can retry sync from Calendar.`,
+                    );
+                    return;
+                  }
+                  setIcsUrl("");
+                  toast.success(
+                    `Calendar feed added — ${result.eventCount} upcoming event${result.eventCount === 1 ? "" : "s"} found.`,
+                  );
+                  resetCaptcha();
+                } catch (error) {
+                  setCaptchaError(
+                    error instanceof Error ? error.message : "Could not add calendar feed. Retry.",
+                  );
+                  retryCaptcha();
+                } finally {
+                  setBusyAction(null);
+                }
               }}
             >
               <Input
@@ -225,13 +275,35 @@ function SettingsPage() {
                 placeholder="https://…/calendar.ics"
                 required
               />
-              <Button type="submit">Add feed</Button>
+              <Button
+                type="submit"
+                disabled={
+                  busyAction === "calendar-feed" ||
+                  (captchaAction === "calendar-feed" && !captchaReady("calendar-feed"))
+                }
+              >
+                {busyAction === "calendar-feed"
+                  ? "Adding…"
+                  : captchaReady("calendar-feed")
+                    ? "Add feed"
+                    : "Verify to add feed"}
+              </Button>
             </form>
-            <TurnstileField
-              action="calendar-feed"
-              resetKey={calendarCaptchaKey}
-              onToken={setCalendarCaptcha}
-            />
+            {captchaAction === "calendar-feed" && (
+              <div className="mt-3">
+                {captchaError && (
+                  <p role="alert" className="mb-2 text-sm text-destructive">
+                    {captchaError}
+                  </p>
+                )}
+                <TurnstileField
+                  action="calendar-feed"
+                  resetKey={captchaKey}
+                  onToken={setCaptchaToken}
+                  onStatus={setCaptchaStatus}
+                />
+              </div>
+            )}
             <ul className="mt-4 space-y-2">
               {(cal.data?.sources ?? []).map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-2 text-sm">
@@ -334,40 +406,67 @@ function SettingsPage() {
               <Button
                 className="mt-4"
                 variant="outline"
+                disabled={
+                  busyAction === "profile-update" ||
+                  (captchaAction === "profile-update" && !captchaReady("profile-update"))
+                }
                 onClick={async () => {
-                  await updateProfile({
-                    data: {
-                      alertEmail: alertEmail || null,
-                      alertsDueSoon: alertPrefs.dueSoon,
-                      alertsOverdue: alertPrefs.overdue,
-                      alertsMeeting: alertPrefs.meeting,
-                      alertsEmailEnabled: alertPrefs.emailEnabled,
-                      alertsTelegramEnabled: alertPrefs.telegramEnabled,
-                    },
-                    headers: profileCaptcha
-                      ? { "x-turnstile-response": profileCaptcha }
-                      : undefined,
-                  });
-                  setProfileCaptcha("");
-                  setProfileCaptchaKey((value) => value + 1);
-                  await ws.refetch();
-                  toast.success("Alert preferences saved");
+                  if (!captchaReady("profile-update")) {
+                    if (captchaAction !== "profile-update") requestCaptcha("profile-update");
+                    return;
+                  }
+                  setBusyAction("profile-update");
+                  try {
+                    await updateProfile({
+                      data: {
+                        alertEmail: alertEmail || null,
+                        alertsDueSoon: alertPrefs.dueSoon,
+                        alertsOverdue: alertPrefs.overdue,
+                        alertsMeeting: alertPrefs.meeting,
+                        alertsEmailEnabled: alertPrefs.emailEnabled,
+                        alertsTelegramEnabled: alertPrefs.telegramEnabled,
+                      },
+                      headers: { "x-turnstile-response": captchaToken },
+                    });
+                    await ws.refetch();
+                    resetCaptcha();
+                    toast.success("Alert preferences saved");
+                  } catch (error) {
+                    setCaptchaError(
+                      error instanceof Error ? error.message : "Could not save preferences. Retry.",
+                    );
+                    retryCaptcha();
+                  } finally {
+                    setBusyAction(null);
+                  }
                 }}
               >
-                Save
+                {busyAction === "profile-update"
+                  ? "Saving…"
+                  : captchaReady("profile-update")
+                    ? "Save preferences"
+                    : "Verify to save"}
               </Button>
               <Button
                 className="ml-2 mt-4"
                 variant="outline"
-                disabled={!testCaptcha || (!alertEmail && !profile?.telegramLinked)}
+                disabled={
+                  busyAction === "alerts-test" ||
+                  (!alertEmail && !profile?.telegramLinked) ||
+                  (captchaAction === "alerts-test" && !captchaReady("alerts-test"))
+                }
                 onClick={async () => {
+                  if (!captchaReady("alerts-test")) {
+                    if (captchaAction !== "alerts-test") requestCaptcha("alerts-test");
+                    return;
+                  }
+                  setBusyAction("alerts-test");
                   try {
                     const result = await sendTestNotification({
-                      headers: { "x-turnstile-response": testCaptcha },
+                      headers: { "x-turnstile-response": captchaToken },
                     });
                     setTestResult(result.deliveries);
-                    setTestCaptcha("");
-                    setTestCaptchaKey((value) => value + 1);
+                    resetCaptcha();
                     await alerts.refetch();
                     if (result.deliveries.every((row) => row.status === "sent"))
                       toast.success("Test notification sent on every enabled channel.");
@@ -376,21 +475,38 @@ function SettingsPage() {
                         "One or more channels could not send. See delivery status below.",
                       );
                   } catch (error) {
-                    toast.error(
+                    setCaptchaError(
                       error instanceof Error
                         ? error.message
                         : "Test notification failed; retry shortly.",
                     );
+                    retryCaptcha();
+                  } finally {
+                    setBusyAction(null);
                   }
                 }}
               >
-                Send test notification
+                {busyAction === "alerts-test"
+                  ? "Sending…"
+                  : captchaReady("alerts-test")
+                    ? "Send test notification"
+                    : "Verify to send test"}
               </Button>
-              <TurnstileField
-                action="alerts-test"
-                resetKey={testCaptchaKey}
-                onToken={setTestCaptcha}
-              />
+              {captchaAction === "alerts-test" && (
+                <div className="mt-3">
+                  {captchaError && (
+                    <p role="alert" className="mb-2 text-sm text-destructive">
+                      {captchaError}
+                    </p>
+                  )}
+                  <TurnstileField
+                    action="alerts-test"
+                    resetKey={captchaKey}
+                    onToken={setCaptchaToken}
+                    onStatus={setCaptchaStatus}
+                  />
+                </div>
+              )}
               {testResult && (
                 <div
                   role="status"
@@ -407,11 +523,21 @@ function SettingsPage() {
                   ))}
                 </div>
               )}
-              <TurnstileField
-                action="profile-update"
-                resetKey={profileCaptchaKey}
-                onToken={setProfileCaptcha}
-              />
+              {captchaAction === "profile-update" && (
+                <div className="mt-3">
+                  {captchaError && (
+                    <p role="alert" className="mb-2 text-sm text-destructive">
+                      {captchaError}
+                    </p>
+                  )}
+                  <TurnstileField
+                    action="profile-update"
+                    resetKey={captchaKey}
+                    onToken={setCaptchaToken}
+                    onStatus={setCaptchaStatus}
+                  />
+                </div>
+              )}
               <div className="mt-5">
                 <h3 className="text-sm font-medium">Outbound log</h3>
                 <ul className="mt-2 space-y-2">
@@ -470,25 +596,58 @@ function SettingsPage() {
               <Button
                 className="mt-4"
                 variant="outline"
+                disabled={
+                  busyAction === "telegram-link" ||
+                  (captchaAction === "telegram-link" && !captchaReady("telegram-link"))
+                }
                 onClick={async () => {
-                  const next = await beginTelegramLink({
-                    headers: telegramCaptcha
-                      ? { "x-turnstile-response": telegramCaptcha }
-                      : undefined,
-                  });
-                  setTelegram(next);
-                  setTelegramCaptcha("");
-                  setTelegramCaptchaKey((value) => value + 1);
-                  toast.success("Code ready. Send it to the bot.");
+                  if (!captchaReady("telegram-link")) {
+                    if (captchaAction !== "telegram-link") requestCaptcha("telegram-link");
+                    return;
+                  }
+                  setBusyAction("telegram-link");
+                  try {
+                    const next = await beginTelegramLink({
+                      headers: { "x-turnstile-response": captchaToken },
+                    });
+                    setTelegram(next);
+                    resetCaptcha();
+                    toast.success("Code ready. Send it to the bot.");
+                  } catch (error) {
+                    setCaptchaError(
+                      error instanceof Error
+                        ? error.message
+                        : "Could not create a Telegram link. Retry.",
+                    );
+                    retryCaptcha();
+                  } finally {
+                    setBusyAction(null);
+                  }
                 }}
               >
-                {telegram ? "New Telegram code" : "Get a Telegram code"}
+                {busyAction === "telegram-link"
+                  ? "Working…"
+                  : captchaReady("telegram-link")
+                    ? telegram
+                      ? "New Telegram code"
+                      : "Get a Telegram code"
+                    : "Verify to link Telegram"}
               </Button>
-              <TurnstileField
-                action="telegram-link"
-                resetKey={telegramCaptchaKey}
-                onToken={setTelegramCaptcha}
-              />
+              {captchaAction === "telegram-link" && (
+                <div className="mt-3">
+                  {captchaError && (
+                    <p role="alert" className="mb-2 text-sm text-destructive">
+                      {captchaError}
+                    </p>
+                  )}
+                  <TurnstileField
+                    action="telegram-link"
+                    resetKey={captchaKey}
+                    onToken={setCaptchaToken}
+                    onStatus={setCaptchaStatus}
+                  />
+                </div>
+              )}
             </Card>
             <Card className="p-5">
               <h2 className="font-display text-xl">Delivery status</h2>
