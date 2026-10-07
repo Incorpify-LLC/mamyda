@@ -71,6 +71,27 @@ test("editing a task saves the selected project", async () => {
 test("notes cannot link another account project", async () => {
   await expect(saveNote({ data: { body: "Note", projectId: "pb" } })).rejects.toThrow();
 });
+test("note project picker supports an explicit link and an explicit unlinked note", async () => {
+  const linked = await saveNote({ data: { body: "Project work", projectId: "p2" } });
+  expect(
+    (await db.query("SELECT project_id FROM notes WHERE id=$1", [linked.id])).rows[0]?.project_id,
+  ).toBe("p2");
+  const unlinked = await saveNote({
+    data: { body: "#one is still a regular tag", projectId: null },
+  });
+  expect(
+    (await db.query("SELECT project_id FROM notes WHERE id=$1", [unlinked.id])).rows[0]?.project_id,
+  ).toBeNull();
+  expect(
+    (await db.query("SELECT tag FROM note_tags WHERE note_id=$1", [unlinked.id])).rows[0]?.tag,
+  ).toBe("one");
+});
+test("legacy notes still infer a project from a slug tag when no project is supplied", async () => {
+  const note = await saveNote({ data: { body: "#one legacy project link" } });
+  expect(
+    (await db.query("SELECT project_id FROM notes WHERE id=$1", [note.id])).rows[0]?.project_id,
+  ).toBe("p1");
+});
 test("editing another account note cannot insert tags", async () => {
   await expect(saveNote({ data: { id: "nb", body: "#intrusion" } })).rejects.toThrow();
   expect((await db.query("SELECT * FROM note_tags")).rows).toHaveLength(0);

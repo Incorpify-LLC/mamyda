@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,15 +13,27 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Note } from "@/lib/mamyda/types";
 import { useWritingDraft } from "@/components/writing-draft";
+import { TurnstileField, type TurnstileStatus } from "@/components/turnstile-field";
+import { Label } from "@/components/ui/label";
 
-export const Route = createFileRoute("/_app/notes")({ component: NotesPage });
+export const Route = createFileRoute("/_app/notes")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...(typeof search.noteId === "string" ? { noteId: search.noteId } : {}),
+  }),
+  component: NotesPage,
+});
 
 function NotesPage() {
+  const search = Route.useSearch();
   const list = useNotes();
   const ws = useWorkspace();
   const [filter, setFilter] = useState<string | null>(null);
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [current, setCurrent] = useState<Note | null>(null);
   const [draft, setDraft] = useState("");
+  const [captcha, setCaptcha] = useState("");
+  const [captchaStatus, setCaptchaStatus] = useState<TurnstileStatus>("unavailable");
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -29,7 +41,10 @@ function NotesPage() {
     return [...set].sort();
   }, [list.data]);
 
-  const visible = (list.data ?? []).filter((n) => (filter ? n.tags.includes(filter) : true));
+  const visible = (list.data ?? []).filter(
+    (n) =>
+      (!filter || n.tags.includes(filter)) && (!projectFilter || n.projectId === projectFilter),
+  );
 
   const projectById = useMemo(
     () => new Map((ws.data?.projects ?? []).map((p) => [p.id, p])),
@@ -38,34 +53,51 @@ function NotesPage() {
 
   const liveTags = extractTags(current ? draft : "");
 
+  useEffect(() => {
+    if (!search.noteId || !list.data) return;
+    const match = list.data.find((note) => note.id === search.noteId);
+    if (match && current?.id !== match.id) {
+      setCurrent(match);
+      setDraft(match.body);
+    }
+  }, [search.noteId, list.data, current?.id]);
+
   async function persist() {
     const next = await saveNote({
-      data: { id: current?.id || undefined, body: draft },
+      data: { id: current?.id || undefined, body: draft, projectId: current?.projectId ?? null },
+      headers: captcha ? { "x-turnstile-response": captcha } : undefined,
     });
     const saved = next.notes.find((n) => n.id === next.id);
     if (!saved)
       throw new Error("Could not identify the saved note. Reload your notes before retrying.");
     setCurrent(saved);
     setDraft(saved.body);
+    setCaptcha("");
+    setCaptchaStatus("loading");
+    setCaptchaKey((value) => value + 1);
     void list.refetch();
     toast.success("Note saved");
   }
   const protection = useWritingDraft({
     kind: "notes",
-    value: { id: current?.id ?? "", body: draft },
-    baseline: { id: current?.id ?? "", body: current?.body ?? "" },
+    value: { id: current?.id ?? "", body: draft, projectId: current?.projectId ?? null },
+    baseline: {
+      id: current?.id ?? "",
+      body: current?.body ?? "",
+      projectId: current?.projectId ?? null,
+    },
     persist,
     restore: (value, baseline) => {
       const saved = (list.data ?? []).find((n) => n.id === value.id);
       setCurrent({
         id: value.id,
-        projectId: null,
         title: "",
         tags: [],
         createdAt: "",
         updatedAt: "",
         ...saved,
         body: baseline.body,
+        projectId: value.projectId ?? saved?.projectId ?? null,
       });
       setDraft(value.body);
     },
@@ -99,7 +131,7 @@ function NotesPage() {
     >
       {protection.dialog}
       <p className="mb-4 text-sm text-muted-foreground">
-        Tag with #project-slug to attach a note to a project. Free tags work too.
+        Link a note to a project below, or use #project-slug in the text. Free tags still work.
       </p>
       <div className="mb-4 flex flex-wrap gap-1.5">
         <button
@@ -125,6 +157,34 @@ function NotesPage() {
             #{t}
           </button>
         ))}
+      </div>
+      <div className="mb-4 flex flex-wrap gap-1.5" aria-label="Filter notes by project">
+        <button
+          type="button"
+          onClick={() => setProjectFilter(null)}
+          className={cn(
+            "rounded-full px-2.5 py-1 text-xs",
+            !projectFilter ? "bg-foreground text-background" : "bg-muted",
+          )}
+        >
+          All projects
+        </button>
+        {(ws.data?.projects ?? [])
+          .filter((project) => (list.data ?? []).some((note) => note.projectId === project.id))
+          .map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              onClick={() => setProjectFilter(project.id)}
+              className={cn(
+                "rounded-full px-2.5 py-1 text-xs",
+                projectFilter === project.id ? "bg-primary text-primary-foreground" : "bg-muted",
+              )}
+            >
+              {project.name}
+              {project.archived ? " · archived" : ""}
+            </button>
+          ))}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
@@ -178,9 +238,45 @@ function NotesPage() {
                 </Badge>
               ))}
             </div>
+            <div className="mt-4 max-w-sm space-y-1.5">
+              <Label htmlFor="note-project">Project</Label>
+              <select
+                id="note-project"
+                aria-label="Link note to project"
+                disabled={protection.saving || protection.recoveryPending}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                value={current.projectId ?? ""}
+                onChange={(e) => setCurrent({ ...current, projectId: e.target.value || null })}
+              >
+                <option value="">No project</option>
+                {current.projectId && projectById.get(current.projectId)?.archived && (
+                  <option value={current.projectId}>
+                    {projectById.get(current.projectId)?.name} (archived)
+                  </option>
+                )}
+                {(ws.data?.projects ?? [])
+                  .filter((project) => !project.archived)
+                  .map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <TurnstileField
+              action="note-save"
+              resetKey={captchaKey}
+              onToken={setCaptcha}
+              onStatus={setCaptchaStatus}
+            />
             <div className="mt-4 flex gap-2">
               <Button
-                disabled={protection.saving || protection.recoveryPending}
+                disabled={
+                  protection.saving ||
+                  protection.recoveryPending ||
+                  captchaStatus !== "verified" ||
+                  !captcha
+                }
                 onClick={() => void protection.save()}
               >
                 {protection.saving ? "Saving…" : "Save"}

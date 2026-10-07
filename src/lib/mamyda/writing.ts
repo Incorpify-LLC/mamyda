@@ -6,6 +6,7 @@ import { extractTags, titleFromBody } from "@/lib/tags";
 import { nid } from "@/lib/utils";
 import { mapMinute, mapNote, mapVault } from "./map";
 import type { Minute, Note, VaultNoteMeta } from "./types";
+import { requireTurnstile } from "./turnstile.server";
 
 async function notesWithTags(userId: string): Promise<Note[]> {
   const sql = await getSql();
@@ -62,7 +63,8 @@ export const saveMinute = createServerFn({ method: "POST" })
         where id = ${data.id} and user_id = ${context.userId}
         returning id
       `;
-      if (!updated[0]) throw new Error("Minutes no longer exist. Copy your draft before reloading.");
+      if (!updated[0])
+        throw new Error("Minutes no longer exist. Copy your draft before reloading.");
       return data.id;
     }
     const id = nid();
@@ -125,6 +127,7 @@ export const saveNote = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => noteInput.parse(input))
   .handler(async ({ context, data }) => {
+    await requireTurnstile("note-save");
     const sql = await getSql();
     if (data.projectId) {
       const owned =
@@ -143,8 +146,9 @@ export const saveNote = createServerFn({ method: "POST" })
       select id, slug from projects where user_id = ${context.userId} and archived = false
     `;
     const slugMap = new Map(projects.map((p) => [p.slug, p.id]));
+    const projectWasExplicitlySet = Object.hasOwn(data, "projectId");
     let projectId = data.projectId ?? null;
-    if (!projectId) {
+    if (!projectId && !projectWasExplicitlySet) {
       for (const tag of tags) {
         const hit = slugMap.get(tag);
         if (hit) {
