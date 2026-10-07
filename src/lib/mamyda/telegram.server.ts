@@ -19,14 +19,26 @@ async function telegram(token: string, method: string, body: Record<string, unkn
 
 export async function sendTelegram(chatId: string, text: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  if (!token || !chatId) return;
-  await telegram(token, "sendMessage", { chat_id: chatId, text });
+  if (!token) throw new Error("Telegram delivery isn't configured.");
+  if (!chatId) throw new Error("Telegram destination is missing.");
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const body = (await response.json().catch(() => ({}))) as { ok?: boolean };
+  if (!response.ok || !body.ok)
+    throw new Error(`Telegram delivery failed (HTTP ${response.status || 502})`);
 }
 
 async function consumeStart(token: string, text: string, chatId: number) {
   const code = text.split(/\s+/)[1]?.trim();
   if (!code) {
-    await sendTelegram(String(chatId), "In Mamyda, open Settings and copy the /start line. Send that whole line here.");
+    await sendTelegram(
+      String(chatId),
+      "In Mamyda, open Settings and copy the /start line. Send that whole line here.",
+    );
     return;
   }
   const sql = await getSql();
@@ -35,7 +47,10 @@ async function consumeStart(token: string, text: string, chatId: number) {
     where telegram_link_code = ${code} and telegram_link_expires_at > now()
   `;
   if (!rows[0]) {
-    await sendTelegram(String(chatId), "That code is unknown or expired. Generate a new one in Mamyda settings.");
+    await sendTelegram(
+      String(chatId),
+      "That code is unknown or expired. Generate a new one in Mamyda settings.",
+    );
     return;
   }
   await sql`
@@ -43,7 +58,10 @@ async function consumeStart(token: string, text: string, chatId: number) {
     set telegram_chat_id = ${String(chatId)}, telegram_link_code = null, telegram_link_expires_at = null
     where user_id = ${rows[0].user_id}
   `;
-  await sendTelegram(String(chatId), "Telegram is linked. Mamyda can send alerts here as well as by email.");
+  await sendTelegram(
+    String(chatId),
+    "Telegram is linked. Mamyda can send alerts here as well as by email.",
+  );
 }
 
 /** One replica holds a session lock and long-polls Telegram. Others skip. */
@@ -57,7 +75,9 @@ export function startTelegramPoller(): void {
     const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
     const client = await pool.connect();
     try {
-      const locked = await client.query<{ ok: boolean }>("select pg_try_advisory_lock($1) as ok", [LOCK]);
+      const locked = await client.query<{ ok: boolean }>("select pg_try_advisory_lock($1) as ok", [
+        LOCK,
+      ]);
       if (!locked.rows[0]?.ok) return;
       let offset = 0;
       for (;;) {
@@ -102,5 +122,10 @@ export async function createTelegramLink(userId: string) {
     set telegram_link_code = ${code}, telegram_link_expires_at = now() + interval '15 minutes'
     where user_id = ${userId}
   `;
-  return { code, username, command: `/start ${code}`, link: `https://t.me/${username}?start=${code}` };
+  return {
+    code,
+    username,
+    command: `/start ${code}`,
+    link: `https://t.me/${username}?start=${code}`,
+  };
 }

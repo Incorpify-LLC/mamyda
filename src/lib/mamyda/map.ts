@@ -52,6 +52,8 @@ export function mapProfile(row: Record<string, unknown>): Profile {
     alertsDueSoon: bool(row.alerts_due_soon),
     alertsOverdue: bool(row.alerts_overdue),
     alertsMeeting: bool(row.alerts_meeting),
+    alertsEmailEnabled: bool(row.alerts_email_enabled),
+    alertsTelegramEnabled: bool(row.alerts_telegram_enabled),
     telegramLinked: Boolean(str(row.telegram_chat_id)),
   };
 }
@@ -149,10 +151,7 @@ export function mapMinute(row: Record<string, unknown>): Minute {
   };
 }
 
-export function mapNote(
-  row: Record<string, unknown>,
-  tags: string[] = [],
-): Note {
+export function mapNote(row: Record<string, unknown>, tags: string[] = []): Note {
   return {
     id: String(row.id),
     projectId: str(row.project_id),
@@ -184,6 +183,23 @@ export function mapAlert(row: Record<string, unknown>): AlertRow {
     scheduledFor: reqIso(row.scheduled_for),
     sentAt: iso(row.sent_at),
     status: String(row.status),
+    deliveries: (() => {
+      try {
+        const rows =
+          typeof row.deliveries === "string" ? JSON.parse(row.deliveries) : row.deliveries;
+        return Array.isArray(rows)
+          ? rows.map((delivery) => ({
+              channel: String(delivery.channel) as "email" | "telegram",
+              status: String(delivery.status),
+              attempts: Number(delivery.attempts ?? 0),
+              lastError: str(delivery.lastError ?? delivery.last_error),
+              sentAt: iso(delivery.sentAt ?? delivery.sent_at),
+            }))
+          : [];
+      } catch {
+        return [];
+      }
+    })(),
   };
 }
 
@@ -195,6 +211,7 @@ export function mapEmail(row: Record<string, unknown>): EmailLog {
     subject: String(row.subject),
     body: String(row.body),
     status: String(row.status),
+    lastError: str(row.last_error),
     createdAt: reqIso(row.created_at),
   };
 }

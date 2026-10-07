@@ -2,7 +2,12 @@ export const MAIL_FROM = () =>
   process.env.MAIL_FROM?.trim() || "Mamyda <alerts@mamyda.incorpify.in>";
 
 /** Sends one plain-text message. Throws when Resend rejects it. */
-export async function sendResendEmail(to: string, subject: string, text: string): Promise<void> {
+export async function sendResendEmail(
+  to: string,
+  subject: string,
+  text: string,
+  deliveryId?: string,
+): Promise<void> {
   const key = process.env.RESEND_API_KEY?.trim();
   if (!key) throw new Error("RESEND_API_KEY is not set");
   const response = await fetch("https://api.resend.com/emails", {
@@ -10,6 +15,7 @@ export async function sendResendEmail(to: string, subject: string, text: string)
     headers: {
       authorization: `Bearer ${key}`,
       "content-type": "application/json",
+      ...(deliveryId ? { "idempotency-key": `mamyda-alert-${deliveryId}` } : {}),
     },
     body: JSON.stringify({ from: MAIL_FROM(), to: [to], subject, text }),
     signal: AbortSignal.timeout(10_000),

@@ -389,6 +389,8 @@ export const updateProfile = createServerFn({ method: "POST" })
         alerts_due_soon = coalesce(${data.alertsDueSoon ?? null}, alerts_due_soon),
         alerts_overdue = coalesce(${data.alertsOverdue ?? null}, alerts_overdue),
         alerts_meeting = coalesce(${data.alertsMeeting ?? null}, alerts_meeting)
+        ,alerts_email_enabled = coalesce(${data.alertsEmailEnabled ?? null}, alerts_email_enabled)
+        ,alerts_telegram_enabled = coalesce(${data.alertsTelegramEnabled ?? null}, alerts_telegram_enabled)
       where user_id = ${context.userId}
     `;
     return loadWorkspace(context.userId);

@@ -12,6 +12,8 @@ export type Profile = {
   alertsDueSoon: boolean;
   alertsOverdue: boolean;
   alertsMeeting: boolean;
+  alertsEmailEnabled: boolean;
+  alertsTelegramEnabled: boolean;
   telegramLinked: boolean;
 };
 
@@ -116,6 +118,13 @@ export type AlertRow = {
   scheduledFor: string;
   sentAt: string | null;
   status: string;
+  deliveries: Array<{
+    channel: "email" | "telegram";
+    status: string;
+    attempts: number;
+    lastError: string | null;
+    sentAt: string | null;
+  }>;
 };
 
 export type EmailLog = {
@@ -125,6 +134,7 @@ export type EmailLog = {
   subject: string;
   body: string;
   status: string;
+  lastError: string | null;
   createdAt: string;
 };
 

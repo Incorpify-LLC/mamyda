@@ -43,8 +43,13 @@ tab, are isolated per account, and are cleared on sign-out. This is temporary
 recovery, not backup: save before closing the tab. Vault plaintext is never
 included. Failed saves keep the draft and allow retry.
 
-Email OTP and alerts use Resend. Telegram alerts use a verified bot with one-time
-account linking. Turnstile protects the integrated forms. Settings has Calendar,
+Email OTP and alerts use Resend. Reminder evaluation runs every minute through
+the private reminders service, including while the browser is closed. A persisted
+outbox deduplicates each alert/channel and retries failures up to five times.
+Set a random `ALERT_CRON_SECRET` in `deploy/.env` before starting the reminders
+service. Settings has independent email/Telegram switches, a rate-limited test
+notification, and delivery results. Telegram alerts use a verified bot with
+one-time account linking. Turnstile protects the integrated forms. Settings has Calendar,
 Email alerts, and Workspace tabs; the header provides a persistent theme toggle.
 
 The live deployment is `https://mamyda.incorpify.in`, served by Node and PostgreSQL

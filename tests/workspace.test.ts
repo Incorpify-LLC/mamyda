@@ -38,6 +38,7 @@ beforeAll(async () => {
   db = new PGlite();
   await db.exec(readFileSync("migrations/0002_mamyda.sql", "utf8"));
   await db.exec(readFileSync("migrations/0005_calendar_sync.sql", "utf8"));
+  await db.exec(readFileSync("migrations/0006_notification_delivery.sql", "utf8"));
   state.sql = async (parts: TemplateStringsArray, ...args: unknown[]) => {
     const query = parts.reduce((text, part, i) => text + (i ? `$${i}` : "") + part, "");
     return (await db.query(query, args)).rows;
@@ -47,7 +48,7 @@ beforeAll(async () => {
 afterAll(async () => db.close());
 beforeEach(async () => {
   state.userId = "alice";
-  await db.exec(`TRUNCATE profiles, clients, projects, tasks, notes, note_tags, minutes, vault_notes, alerts, email_log, calendar_events;
+  await db.exec(`TRUNCATE notification_deliveries, profiles, clients, projects, tasks, notes, note_tags, minutes, vault_notes, alerts, email_log, calendar_events;
     INSERT INTO profiles (user_id, alert_email) VALUES ('alice', 'alice@example.test'), ('bob', 'bob@example.test');
     INSERT INTO clients (id,user_id,name) VALUES ('c1','alice','One'),('c2','alice','Two'),('cb','bob','Bob');
     INSERT INTO projects (id,user_id,client_id,name,slug) VALUES ('p1','alice','c1','One','one'),('p2','alice','c2','Two','two'),('pb','bob','cb','Bob','bob');

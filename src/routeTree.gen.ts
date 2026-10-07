@@ -22,6 +22,7 @@ import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiOtpSinkRouteImport } from './routes/api/otp-sink'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiFilesIdRouteImport } from './routes/api/files/$id'
+import { Route as ApiInternalAlertsRouteImport } from './routes/api/internal/alerts'
 import { Route as ApiCalendarGoogleCallbackRouteImport } from './routes/api/calendar/google/callback'
 import { Route as ApiCalendarMicrosoftCallbackRouteImport } from './routes/api/calendar/microsoft/callback'
 import { Route as ApiCalendarOutlookCallbackRouteImport } from './routes/api/calendar/outlook/callback'
@@ -90,6 +91,11 @@ const ApiFilesIdRoute = ApiFilesIdRouteImport.update({
   path: '/api/files/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalAlertsRoute = ApiInternalAlertsRouteImport.update({
+  id: '/api/internal/alerts',
+  path: '/api/internal/alerts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCalendarGoogleCallbackRoute =
   ApiCalendarGoogleCallbackRouteImport.update({
     id: '/api/calendar/google/callback',
@@ -122,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/api/otp-sink': typeof ApiOtpSinkRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/files/$id': typeof ApiFilesIdRoute
+  '/api/internal/alerts': typeof ApiInternalAlertsRoute
   '/api/calendar/google/callback': typeof ApiCalendarGoogleCallbackRoute
   '/api/calendar/microsoft/callback': typeof ApiCalendarMicrosoftCallbackRoute
   '/api/calendar/outlook/callback': typeof ApiCalendarOutlookCallbackRoute
@@ -139,6 +146,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/files/$id': typeof ApiFilesIdRoute
+  '/api/internal/alerts': typeof ApiInternalAlertsRoute
   '/api/calendar/google/callback': typeof ApiCalendarGoogleCallbackRoute
   '/api/calendar/microsoft/callback': typeof ApiCalendarMicrosoftCallbackRoute
   '/api/calendar/outlook/callback': typeof ApiCalendarOutlookCallbackRoute
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/files/$id': typeof ApiFilesIdRoute
+  '/api/internal/alerts': typeof ApiInternalAlertsRoute
   '/api/calendar/google/callback': typeof ApiCalendarGoogleCallbackRoute
   '/api/calendar/microsoft/callback': typeof ApiCalendarMicrosoftCallbackRoute
   '/api/calendar/outlook/callback': typeof ApiCalendarOutlookCallbackRoute
@@ -177,6 +186,7 @@ export interface FileRouteTypes {
     | '/api/otp-sink'
     | '/api/auth/$'
     | '/api/files/$id'
+    | '/api/internal/alerts'
     | '/api/calendar/google/callback'
     | '/api/calendar/microsoft/callback'
     | '/api/calendar/outlook/callback'
@@ -194,6 +204,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/auth/$'
     | '/api/files/$id'
+    | '/api/internal/alerts'
     | '/api/calendar/google/callback'
     | '/api/calendar/microsoft/callback'
     | '/api/calendar/outlook/callback'
@@ -212,6 +223,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/api/auth/$'
     | '/api/files/$id'
+    | '/api/internal/alerts'
     | '/api/calendar/google/callback'
     | '/api/calendar/microsoft/callback'
     | '/api/calendar/outlook/callback'
@@ -224,6 +236,7 @@ export interface RootRouteChildren {
   ApiOtpSinkRoute: typeof ApiOtpSinkRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiFilesIdRoute: typeof ApiFilesIdRoute
+  ApiInternalAlertsRoute: typeof ApiInternalAlertsRoute
   ApiCalendarGoogleCallbackRoute: typeof ApiCalendarGoogleCallbackRoute
   ApiCalendarMicrosoftCallbackRoute: typeof ApiCalendarMicrosoftCallbackRoute
   ApiCalendarOutlookCallbackRoute: typeof ApiCalendarOutlookCallbackRoute
@@ -322,6 +335,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFilesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/alerts': {
+      id: '/api/internal/alerts'
+      path: '/api/internal/alerts'
+      fullPath: '/api/internal/alerts'
+      preLoaderRoute: typeof ApiInternalAlertsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/calendar/google/callback': {
       id: '/api/calendar/google/callback'
       path: '/api/calendar/google/callback'
@@ -375,6 +395,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOtpSinkRoute: ApiOtpSinkRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiFilesIdRoute: ApiFilesIdRoute,
+  ApiInternalAlertsRoute: ApiInternalAlertsRoute,
   ApiCalendarGoogleCallbackRoute: ApiCalendarGoogleCallbackRoute,
   ApiCalendarMicrosoftCallbackRoute: ApiCalendarMicrosoftCallbackRoute,
   ApiCalendarOutlookCallbackRoute: ApiCalendarOutlookCallbackRoute,

@@ -16,6 +16,7 @@ ENV PORT=3000
 COPY --from=build /app/.output ./.output
 COPY --from=build /app/migrations ./migrations
 COPY --from=build /app/scripts/migrate.mjs ./scripts/migrate.mjs
+COPY --from=build /app/scripts/reminder-scheduler.mjs ./scripts/reminder-scheduler.mjs
 COPY --from=build /app/scripts/migration-plan.mjs ./scripts/migration-plan.mjs
 COPY --from=build /app/scripts/container-entrypoint.mjs ./scripts/container-entrypoint.mjs
 EXPOSE 3000

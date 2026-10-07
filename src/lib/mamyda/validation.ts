@@ -38,6 +38,8 @@ export const profileInput = z.object({
   alertsDueSoon: z.boolean().optional(),
   alertsOverdue: z.boolean().optional(),
   alertsMeeting: z.boolean().optional(),
+  alertsEmailEnabled: z.boolean().optional(),
+  alertsTelegramEnabled: z.boolean().optional(),
 });
 export const minuteInput = z.object({
   id: id.optional(),

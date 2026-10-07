@@ -56,6 +56,21 @@ services:
       retries: 12
     restart: unless-stopped
 
+  reminders:
+    build: .
+    env_file: deploy/.env
+    environment:
+      APP_ENV: staging
+      ALERT_CRON_SECRET: ${ALERT_CRON_SECRET:?Set ALERT_CRON_SECRET in deploy/.env}
+      ALERT_CRON_URL: http://app:3000/api/internal/alerts
+      ALERT_CRON_INTERVAL_MS: "60000"
+    depends_on:
+      app:
+        condition: service_healthy
+    command: ["node", "scripts/reminder-scheduler.mjs"]
+    networks: [internal]
+    restart: unless-stopped
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     command: ["tunnel", "--no-autoupdate", "run", "--token", "${TUNNEL_TOKEN}"]
