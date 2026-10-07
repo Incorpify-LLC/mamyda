@@ -23,6 +23,7 @@ import {
   readStashedKey,
   stashFromDecrypted,
   unlockPrivateKey,
+  validatePrivateKeyBackup,
 } from "@/lib/vault-crypto";
 import { toast } from "sonner";
 
@@ -38,9 +39,132 @@ function VaultPage() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [backupFile, setBackupFile] = useState<File | null>(null);
+  const [backupPassphrase, setBackupPassphrase] = useState("");
+  const [checkingBackup, setCheckingBackup] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const profile = ws.data?.profile;
   const hasKeys = Boolean(profile?.vaultPublicKey && profile?.vaultPrivateKeyArmored);
+
+  function downloadText(filename: string, contents: string, type: string) {
+    const url = URL.createObjectURL(new Blob([contents], { type }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportKeyBackup() {
+    if (!key || !profile?.vaultPrivateKeyArmored) return;
+    if (
+      !window.confirm(
+        "Download your encrypted private key backup? Keep this file private and remember the vault passphrase; without both, the vault cannot be recovered.",
+      )
+    )
+      return;
+    downloadText(
+      "mamyda-vault-private-key.asc",
+      profile.vaultPrivateKeyArmored,
+      "application/pgp-keys",
+    );
+    toast.success("Encrypted key backup downloaded");
+  }
+
+  function exportCurrentNote() {
+    if (!key || !body.trim()) return;
+    if (
+      !window.confirm(
+        "This creates a plaintext JSON file on your device. Anyone who gets the file can read it.",
+      )
+    )
+      return;
+    downloadText(
+      "mamyda-vault-note.json",
+      JSON.stringify(
+        {
+          format: "mamyda-vault-note-v1",
+          exportedAt: new Date().toISOString(),
+          title: title || "Untitled",
+          body,
+        },
+        null,
+        2,
+      ),
+      "application/json",
+    );
+  }
+
+  async function exportAllNotes() {
+    if (!key || !list.data?.length || exporting) return;
+    if (
+      !window.confirm(
+        "This decrypts all saved vault notes in this browser and downloads them as plaintext JSON. Anyone who gets the file can read every note.",
+      )
+    )
+      return;
+    setExporting(true);
+    try {
+      const notes = [];
+      for (const item of list.data) {
+        const row = await getVaultCipher({ data: item.id });
+        notes.push({
+          id: item.id,
+          title: item.title,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+          body: await decryptNote(row.ciphertext, key),
+        });
+      }
+      downloadText(
+        "mamyda-vault-notes.json",
+        JSON.stringify(
+          { format: "mamyda-vault-export-v1", exportedAt: new Date().toISOString(), notes },
+          null,
+          2,
+        ),
+        "application/json",
+      );
+      toast.success(
+        `${notes.length} saved note${notes.length === 1 ? "" : "s"} exported to this device`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not export notes; no file was created.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function verifyBackup() {
+    if (!backupFile || !backupPassphrase || !profile?.vaultPublicKey) return;
+    setCheckingBackup(true);
+    try {
+      if (backupFile.size > 50_000)
+        throw new Error("Choose a private-key backup smaller than 50 KB.");
+      const matches = await validatePrivateKeyBackup(
+        await backupFile.text(),
+        backupPassphrase,
+        profile.vaultPublicKey,
+      );
+      if (!matches) throw new Error("That key belongs to a different vault.");
+      toast.success("Backup verified — it unlocks this vault's key.");
+      setBackupFile(null);
+      setBackupPassphrase("");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Backup could not be verified. Check the file and passphrase.",
+      );
+    } finally {
+      setCheckingBackup(false);
+    }
+  }
 
   useEffect(() => {
     void readStashedKey().then((k) => {
@@ -80,10 +204,7 @@ function VaultPage() {
     if (!profile?.vaultPrivateKeyArmored) return;
     setBusy(true);
     try {
-      const unlocked = await unlockPrivateKey(
-        profile.vaultPrivateKeyArmored,
-        passphrase,
-      );
+      const unlocked = await unlockPrivateKey(profile.vaultPrivateKeyArmored, passphrase);
       await stashFromDecrypted(unlocked);
       setKey(unlocked);
       setPassphrase("");
@@ -150,17 +271,28 @@ function VaultPage() {
       }
     >
       <p className="mb-6 max-w-xl text-sm text-muted-foreground">
-        Notes are encrypted in this browser with OpenPGP. The server keeps only
-        ciphertext and a passphrase-protected private key. Desktop{" "}
-        <code className="text-xs">gpg</code> can read anything you export.
+        Notes are encrypted in this browser with OpenPGP. The server keeps only ciphertext and a
+        passphrase-protected private key. Desktop <code className="text-xs">gpg</code> can read
+        anything you export.
       </p>
+
+      {hasKeys && (
+        <Card className="mb-4 max-w-2xl border-amber-500/40 p-4">
+          <h2 className="font-medium">Protect your recovery path</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Mamyda cannot reset a forgotten vault passphrase. Keep your passphrase and a backup of
+            the encrypted private key in separate safe places; without both, encrypted notes cannot
+            be recovered.
+          </p>
+        </Card>
+      )}
 
       {!hasKeys && (
         <Card className="max-w-md p-5">
           <h2 className="font-display text-xl">Create your key</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            This passphrase wraps the private key. It is never sent in the
-            clear.
+            This passphrase wraps the private key. It is never sent in the clear. Mamyda cannot
+            reset it. After creating your vault, download and verify the encrypted key backup.
           </p>
           <div className="mt-4 space-y-1.5">
             <Label htmlFor="vp">Passphrase</Label>
@@ -199,67 +331,125 @@ function VaultPage() {
       )}
 
       {key && (
-        <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
-          <div className="space-y-2">
-            {(list.data ?? []).map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-left"
-                onClick={() => void openNote(n.id, n.title)}
+        <>
+          <Card className="mb-4 space-y-4 p-4">
+            <div>
+              <h2 className="font-medium">Back up and export</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Key backup stays passphrase-protected. Note exports are plaintext files created only
+                on this device; Mamyda never receives the exports.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={exportKeyBackup}>
+                Download encrypted key backup (.asc)
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!list.data?.length || exporting}
+                onClick={() => void exportAllNotes()}
               >
-                <p className="text-sm font-medium">{n.title}</p>
-              </button>
-            ))}
-            {(list.data ?? []).length === 0 && (
-              <p className="text-sm text-muted-foreground">Vault is empty.</p>
-            )}
-          </div>
-          <Card className="p-5">
-            <div className="space-y-3">
-              <Input
-                placeholder="Title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-              <Textarea
-                className="min-h-56"
-                placeholder="This never leaves the browser in plaintext."
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-              />
-              <div className="flex gap-2">
-                <Button disabled={busy || !body.trim()} onClick={() => void save()}>
-                  Encrypt & save
-                </Button>
-                {editingId && (
+                {exporting ? "Exporting…" : "Export all saved notes (.json)"}
+              </Button>
+              <Button variant="outline" disabled={!body.trim()} onClick={exportCurrentNote}>
+                Export this note (.json)
+              </Button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+              <div className="space-y-1.5">
+                <Label htmlFor="vault-backup-file">Verify an encrypted key backup</Label>
+                <Input
+                  id="vault-backup-file"
+                  type="file"
+                  accept=".asc,.txt,application/pgp-keys"
+                  onChange={(e) => setBackupFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="vault-backup-passphrase">Backup passphrase</Label>
+                <Input
+                  id="vault-backup-passphrase"
+                  type="password"
+                  autoComplete="off"
+                  value={backupPassphrase}
+                  onChange={(e) => setBackupPassphrase(e.target.value)}
+                />
+              </div>
+              <Button
+                variant="outline"
+                disabled={!backupFile || !backupPassphrase || checkingBackup}
+                onClick={() => void verifyBackup()}
+              >
+                {checkingBackup ? "Checking…" : "Verify backup"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Verification happens in your browser. It checks the selected file against this vault’s
+              public key and never uploads the file or passphrase.
+            </p>
+          </Card>
+          <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
+            <div className="space-y-2">
+              {(list.data ?? []).map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-left"
+                  onClick={() => void openNote(n.id, n.title)}
+                >
+                  <p className="text-sm font-medium">{n.title}</p>
+                </button>
+              ))}
+              {(list.data ?? []).length === 0 && (
+                <p className="text-sm text-muted-foreground">Vault is empty.</p>
+              )}
+            </div>
+            <Card className="p-5">
+              <div className="space-y-3">
+                <Input
+                  placeholder="Title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+                <Textarea
+                  className="min-h-56"
+                  placeholder="This never leaves the browser in plaintext."
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <Button disabled={busy || !body.trim()} onClick={() => void save()}>
+                    Encrypt & save
+                  </Button>
+                  {editingId && (
+                    <Button
+                      variant="ghost"
+                      onClick={async () => {
+                        await deleteVaultNote({ data: editingId });
+                        setEditingId(null);
+                        setTitle("");
+                        setBody("");
+                        await list.refetch();
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  )}
                   <Button
-                    variant="ghost"
-                    onClick={async () => {
-                      await deleteVaultNote({ data: editingId });
+                    variant="outline"
+                    onClick={() => {
                       setEditingId(null);
                       setTitle("");
                       setBody("");
-                      await list.refetch();
                     }}
                   >
-                    Delete
+                    New
                   </Button>
-                )}
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setEditingId(null);
-                    setTitle("");
-                    setBody("");
-                  }}
-                >
-                  New
-                </Button>
+                </div>
               </div>
-            </div>
-          </Card>
-        </div>
+            </Card>
+          </div>
+        </>
       )}
     </AppShell>
   );

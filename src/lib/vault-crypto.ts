@@ -25,6 +25,17 @@ export async function unlockPrivateKey(
   return openpgp.decryptKey({ privateKey: key, passphrase });
 }
 
+/** Validate a user-supplied backup without uploading it or changing stored keys. */
+export async function validatePrivateKeyBackup(
+  armored: string,
+  passphrase: string,
+  publicArmored: string,
+): Promise<boolean> {
+  const backupKey = await unlockPrivateKey(armored, passphrase);
+  const publicKey = await openpgp.readKey({ armoredKey: publicArmored });
+  return backupKey.getFingerprint() === publicKey.getFingerprint();
+}
+
 export async function encryptNote(plaintext: string, publicArmored: string): Promise<string> {
   const publicKey = await openpgp.readKey({ armoredKey: publicArmored });
   const message = await openpgp.createMessage({ text: plaintext });

@@ -7,6 +7,7 @@ import {
   stashFromDecrypted,
   readStashedKey,
   clearUnlockedKey,
+  validatePrivateKeyBackup,
 } from "@/lib/vault-crypto";
 test("vault encrypts, rejects wrong passphrases and clears unlocked material", async () => {
   const storage = new Map<string, string>();
@@ -22,6 +23,12 @@ test("vault encrypts, rejects wrong passphrases and clears unlocked material", a
   });
   await expect(unlockPrivateKey(pair.privateKey, "wrong")).rejects.toThrow();
   const key = await unlockPrivateKey(pair.privateKey, "a-long-test-passphrase");
+  expect(
+    await validatePrivateKeyBackup(pair.privateKey, "a-long-test-passphrase", pair.publicKey),
+  ).toBe(true);
+  await expect(
+    validatePrivateKeyBackup(pair.privateKey, "wrong", pair.publicKey),
+  ).rejects.toThrow();
   const cipher = await encryptNote("private body", pair.publicKey);
   expect(cipher).not.toContain("private body");
   expect(await decryptNote(cipher, key)).toBe("private body");
