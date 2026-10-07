@@ -1,0 +1,12 @@
+node_modules
+.output
+.vercel
+.nitro
+.git
+screenshots
+.env
+.env.*
+*.log
+coverage
+playwright-report
+test-results

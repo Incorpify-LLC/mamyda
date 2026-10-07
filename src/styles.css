@@ -38,6 +38,29 @@
 }
 
 @layer base {
+  :root.dark {
+    color-scheme: dark;
+    --color-background: #171a1a;
+    --color-foreground: #edf0eb;
+    --color-card: #202524;
+    --color-card-foreground: #edf0eb;
+    --color-muted: #2c3431;
+    --color-muted-foreground: #b8c0b8;
+    --color-popover: #202524;
+    --color-popover-foreground: #edf0eb;
+    --color-border: #3b4742;
+    --color-input: #4a5651;
+    --color-primary: #a8c8aa;
+    --color-primary-foreground: #122219;
+    --color-secondary: #313b36;
+    --color-secondary-foreground: #edf0eb;
+    --color-accent: #35453b;
+    --color-accent-foreground: #edf0eb;
+    --color-destructive: #ec9a95;
+    --color-destructive-foreground: #321817;
+    --color-ring: #c2dfbf;
+  }
+
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -69,6 +92,10 @@
   *:focus-visible {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
+  }
+
+  input[type="checkbox"] {
+    accent-color: var(--color-primary);
   }
 }
 

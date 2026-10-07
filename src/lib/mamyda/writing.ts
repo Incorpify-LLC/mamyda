@@ -1,3 +1,4 @@
+import { idInput, keysInput, minuteInput, noteInput, polishInput, vaultInput } from "./validation";
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
@@ -35,16 +36,19 @@ export const listMinutes = createServerFn({ method: "GET" })
 
 export const saveMinute = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: {
-    id?: string;
-    title: string;
-    body: string;
-    attendees?: string;
-    eventId?: string | null;
-    projectId?: string | null;
-  }) => input)
+  .validator((input: unknown) => minuteInput.parse(input))
   .handler(async ({ context, data }) => {
     const sql = await getSql();
+    if (data.projectId) {
+      const owned =
+        await sql`select id from projects where id = ${data.projectId} and user_id = ${context.userId}`;
+      if (!owned[0]) throw new Error("Project not found");
+    }
+    if (data.eventId) {
+      const owned =
+        await sql`select id from calendar_events where id = ${data.eventId} and user_id = ${context.userId}`;
+      if (!owned[0]) throw new Error("Event not found");
+    }
     const title = data.title.trim() || "Untitled minutes";
     if (data.id) {
       await sql`
@@ -69,7 +73,7 @@ export const saveMinute = createServerFn({ method: "POST" })
 
 export const deleteMinute = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((id: string) => id)
+  .validator((input: unknown) => idInput.parse(input))
   .handler(async ({ context, data: id }) => {
     const sql = await getSql();
     await sql`delete from minutes where id = ${id} and user_id = ${context.userId}`;
@@ -78,7 +82,7 @@ export const deleteMinute = createServerFn({ method: "POST" })
 
 export const polishMinutes = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { title: string; body: string; attendees?: string }) => input)
+  .validator((input: unknown) => polishInput.parse(input))
   .handler(async ({ data }) => {
     const apiKey = process.env.XAI_API_KEY;
     if (!apiKey) return { ok: false as const, error: "AI is not available" };
@@ -117,9 +121,19 @@ export const listNotes = createServerFn({ method: "GET" })
 
 export const saveNote = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { id?: string; body: string; title?: string; projectId?: string | null }) => input)
+  .validator((input: unknown) => noteInput.parse(input))
   .handler(async ({ context, data }) => {
     const sql = await getSql();
+    if (data.projectId) {
+      const owned =
+        await sql`select id from projects where id = ${data.projectId} and user_id = ${context.userId}`;
+      if (!owned[0]) throw new Error("Project not found");
+    }
+    if (data.id) {
+      const owned =
+        await sql`select id from notes where id = ${data.id} and user_id = ${context.userId}`;
+      if (!owned[0]) throw new Error("Note not found");
+    }
     const body = data.body;
     const title = (data.title?.trim() || titleFromBody(body)).slice(0, 80);
     const tags = extractTags(body);
@@ -163,7 +177,7 @@ export const saveNote = createServerFn({ method: "POST" })
 
 export const deleteNote = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((id: string) => id)
+  .validator((input: unknown) => idInput.parse(input))
   .handler(async ({ context, data: id }) => {
     const sql = await getSql();
     await sql`delete from note_tags where note_id = ${id} and user_id = ${context.userId}`;
@@ -184,7 +198,7 @@ export const listVault = createServerFn({ method: "GET" })
 
 export const getVaultCipher = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((id: string) => id)
+  .validator((input: unknown) => idInput.parse(input))
   .handler(async ({ context, data: id }) => {
     const sql = await getSql();
     const rows = await sql<{ ciphertext: string; title: string }>`
@@ -197,7 +211,7 @@ export const getVaultCipher = createServerFn({ method: "POST" })
 
 export const saveVaultNote = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { id?: string; title: string; ciphertext: string }) => input)
+  .validator((input: unknown) => vaultInput.parse(input))
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     const title = data.title.trim() || "Untitled";
@@ -218,7 +232,7 @@ export const saveVaultNote = createServerFn({ method: "POST" })
 
 export const deleteVaultNote = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((id: string) => id)
+  .validator((input: unknown) => idInput.parse(input))
   .handler(async ({ context, data: id }) => {
     const sql = await getSql();
     await sql`delete from vault_notes where id = ${id} and user_id = ${context.userId}`;
@@ -227,17 +241,20 @@ export const deleteVaultNote = createServerFn({ method: "POST" })
 
 export const saveVaultKeys = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { publicKey: string; privateKeyArmored: string }) => input)
+  .validator((input: unknown) => keysInput.parse(input))
   .handler(async ({ context, data }) => {
     const sql = await getSql();
-    await sql`
+    const saved = await sql`
       insert into profiles (user_id, vault_public_key, vault_private_key_armored, vault_key_created_at)
       values (${context.userId}, ${data.publicKey}, ${data.privateKeyArmored}, now())
       on conflict (user_id) do update set
         vault_public_key = excluded.vault_public_key,
         vault_private_key_armored = excluded.vault_private_key_armored,
         vault_key_created_at = now()
+      where profiles.vault_public_key is null and profiles.vault_private_key_armored is null
+      returning user_id
     `;
+    if (!saved[0]) throw new Error("Vault keys already exist; unlock your existing vault");
     return { ok: true };
   });
 

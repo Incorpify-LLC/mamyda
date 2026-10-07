@@ -1,10 +1,19 @@
+import {
+  clientInput,
+  idInput,
+  moveInput,
+  profileInput,
+  projectInput,
+  taskInput,
+} from "./validation";
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
-import { TASK_COLUMNS } from "@/lib/columns";
+import { TASK_COLUMNS, PRIORITIES } from "@/lib/columns";
 import { slugify, nid } from "@/lib/utils";
 import { addDays, iso, startOfDay, zonedDate, APP_TZ } from "@/lib/time";
 import { mapClient, mapProfile, mapProject, mapTask } from "./map";
+import { requireTurnstile } from "./turnstile.server";
 import type { WorkspaceSnapshot } from "./types";
 
 async function ensureProfile(userId: string, email?: string | null) {
@@ -119,9 +128,7 @@ export const seedWorkspace = createServerFn({ method: "POST" })
         day: "2-digit",
       }).formatToParts(d);
       const bag = Object.fromEntries(parts.map((x) => [x.type, x.value]));
-      return iso(
-        zonedDate(Number(bag.year), Number(bag.month), Number(bag.day), h, 0),
-      );
+      return iso(zonedDate(Number(bag.year), Number(bag.month), Number(bag.day), h, 0));
     };
 
     type SeedTask = [string, string, string, string, string | null, string, number];
@@ -158,13 +165,7 @@ export const seedWorkspace = createServerFn({ method: "POST" })
         day: "2-digit",
       }).formatToParts(d);
       const bag = Object.fromEntries(parts.map((x) => [x.type, x.value]));
-      const start = zonedDate(
-        Number(bag.year),
-        Number(bag.month),
-        Number(bag.day),
-        h,
-        min,
-      );
+      const start = zonedDate(Number(bag.year), Number(bag.month), Number(bag.day), h, min);
       const end = new Date(start.getTime() + durMin * 60_000);
       return { start: iso(start), end: iso(end) };
     };
@@ -225,8 +226,9 @@ export const seedWorkspace = createServerFn({ method: "POST" })
 
 export const upsertClient = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { id?: string; name: string; color?: string; email?: string; notes?: string }) => input)
+  .validator((input: unknown) => clientInput.parse(input))
   .handler(async ({ context, data }) => {
+    await requireTurnstile("client-manage");
     const sql = await getSql();
     const id = data.id ?? nid();
     const name = data.name.trim();
@@ -252,8 +254,9 @@ export const upsertClient = createServerFn({ method: "POST" })
 
 export const archiveClient = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((id: string) => id)
+  .validator((input: unknown) => idInput.parse(input))
   .handler(async ({ context, data: id }) => {
+    await requireTurnstile("client-manage");
     const sql = await getSql();
     await sql`
       update clients set archived = true, updated_at = now()
@@ -264,8 +267,9 @@ export const archiveClient = createServerFn({ method: "POST" })
 
 export const upsertProject = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { id?: string; clientId: string; name: string; description?: string }) => input)
+  .validator((input: unknown) => projectInput.parse(input))
   .handler(async ({ context, data }) => {
+    await requireTurnstile("project-manage");
     const sql = await getSql();
     const name = data.name.trim();
     if (!name) throw new Error("Name is required");
@@ -276,6 +280,7 @@ export const upsertProject = createServerFn({ method: "POST" })
     if (data.id) {
       await sql`
         update projects set
+          client_id = ${data.clientId},
           name = ${name},
           description = ${data.description ?? null},
           updated_at = now()
@@ -293,8 +298,9 @@ export const upsertProject = createServerFn({ method: "POST" })
 
 export const archiveProject = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((id: string) => id)
+  .validator((input: unknown) => idInput.parse(input))
   .handler(async ({ context, data: id }) => {
+    await requireTurnstile("project-manage");
     const sql = await getSql();
     await sql`
       update projects set archived = true, updated_at = now()
@@ -305,17 +311,9 @@ export const archiveProject = createServerFn({ method: "POST" })
 
 export const upsertTask = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: {
-    id?: string;
-    projectId: string;
-    title: string;
-    notes?: string;
-    columnId?: string;
-    priority?: string;
-    dueAt?: string | null;
-    labels?: string[];
-  }) => input)
+  .validator((input: unknown) => taskInput.parse(input))
   .handler(async ({ context, data }) => {
+    await requireTurnstile("task-manage");
     const sql = await getSql();
     const title = data.title.trim();
     if (!title) throw new Error("Title is required");
@@ -323,13 +321,15 @@ export const upsertTask = createServerFn({ method: "POST" })
       select id from projects where id = ${data.projectId} and user_id = ${context.userId}
     `;
     if (!owned[0]) throw new Error("Project not found");
-    const columnId = TASK_COLUMNS.some((c) => c.id === data.columnId)
-      ? data.columnId
-      : "backlog";
+    const columnId = TASK_COLUMNS.some((c) => c.id === data.columnId) ? data.columnId : "backlog";
+    if (data.priority && !PRIORITIES.includes(data.priority as (typeof PRIORITIES)[number])) {
+      throw new Error("Invalid priority");
+    }
     const labels = JSON.stringify(data.labels ?? []);
     if (data.id) {
       await sql`
         update tasks set
+          project_id = ${data.projectId},
           title = ${title},
           notes = ${data.notes ?? null},
           column_id = ${columnId!},
@@ -355,12 +355,10 @@ export const upsertTask = createServerFn({ method: "POST" })
 
 export const moveTask = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { id: string; columnId: string; position: number }) => input)
+  .validator((input: unknown) => moveInput.parse(input))
   .handler(async ({ context, data }) => {
     const sql = await getSql();
-    const columnId = TASK_COLUMNS.some((c) => c.id === data.columnId)
-      ? data.columnId
-      : "backlog";
+    const columnId = TASK_COLUMNS.some((c) => c.id === data.columnId) ? data.columnId : "backlog";
     await sql`
       update tasks set column_id = ${columnId!}, position = ${data.position}, updated_at = now()
       where id = ${data.id} and user_id = ${context.userId}
@@ -370,8 +368,9 @@ export const moveTask = createServerFn({ method: "POST" })
 
 export const deleteTask = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((id: string) => id)
+  .validator((input: unknown) => idInput.parse(input))
   .handler(async ({ context, data: id }) => {
+    await requireTurnstile("task-manage");
     const sql = await getSql();
     await sql`delete from tasks where id = ${id} and user_id = ${context.userId}`;
     return loadWorkspace(context.userId);
@@ -379,18 +378,14 @@ export const deleteTask = createServerFn({ method: "POST" })
 
 export const updateProfile = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: {
-    alertEmail?: string | null;
-    alertsDueSoon?: boolean;
-    alertsOverdue?: boolean;
-    alertsMeeting?: boolean;
-  }) => input)
+  .validator((input: unknown) => profileInput.parse(input))
   .handler(async ({ context, data }) => {
+    await requireTurnstile("profile-update");
     const sql = await getSql();
     await ensureProfile(context.userId);
     await sql`
       update profiles set
-        alert_email = coalesce(${data.alertEmail ?? null}, alert_email),
+        alert_email = CASE WHEN ${data.alertEmail !== undefined} THEN ${data.alertEmail?.trim() || null} ELSE alert_email END,
         alerts_due_soon = coalesce(${data.alertsDueSoon ?? null}, alerts_due_soon),
         alerts_overdue = coalesce(${data.alertsOverdue ?? null}, alerts_overdue),
         alerts_meeting = coalesce(${data.alertsMeeting ?? null}, alerts_meeting)
@@ -405,7 +400,12 @@ export const clearSampleData = createServerFn({ method: "POST" })
     const sql = await getSql();
     await sql`delete from calendar_events where user_id = ${context.userId} and is_sample = true`;
     await sql`delete from tasks where user_id = ${context.userId} and is_sample = true`;
-    await sql`delete from projects where user_id = ${context.userId} and is_sample = true`;
-    await sql`delete from clients where user_id = ${context.userId} and is_sample = true`;
+    await sql`delete from projects p where p.user_id = ${context.userId} and p.is_sample = true
+      and not exists (select 1 from tasks t where t.project_id = p.id)
+      and not exists (select 1 from notes n where n.project_id = p.id)
+      and not exists (select 1 from minutes m where m.project_id = p.id)
+      and not exists (select 1 from calendar_events e where e.project_id = p.id)`;
+    await sql`delete from clients c where c.user_id = ${context.userId} and c.is_sample = true
+      and not exists (select 1 from projects p where p.client_id = c.id)`;
     return loadWorkspace(context.userId);
   });

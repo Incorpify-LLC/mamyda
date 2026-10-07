@@ -1,0 +1,76 @@
+# pi03. Secrets are deploy/.env (gitignored). A root .env symlink points at it so
+# Compose can interpolate ${POSTGRES_PASSWORD} and ${TUNNEL_TOKEN}.
+# Public hostname origin: http://app:3000 on the external network mamyda-web.
+services:
+  postgres:
+    image: postgres:16
+    env_file: deploy/.env
+    environment:
+      POSTGRES_USER: mamyda
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: mamyda
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=40"]
+    mem_limit: 1g
+    volumes:
+      - ${POSTGRES_DATA:-mamyda-pg}:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mamyda -d mamyda"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build: .
+    env_file: deploy/.env
+    environment:
+      APP_ENV: staging
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["node", "scripts/migrate.mjs"]
+    networks: [internal]
+    restart: "no"
+
+  app:
+    build: .
+    env_file: deploy/.env
+    environment:
+      APP_ENV: staging
+      HOST: 0.0.0.0
+      PORT: "3000"
+      VITE_AUTH_ENABLED: "true"
+      POSTGRES_HOST: postgres
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+    mem_limit: 512m
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [internal, mamyda-web]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: ["tunnel", "--no-autoupdate", "run", "--token", "${TUNNEL_TOKEN}"]
+    mem_limit: 128m
+    depends_on:
+      app:
+        condition: service_healthy
+    networks: [mamyda-web]
+    restart: unless-stopped
+
+networks:
+  internal:
+  mamyda-web:
+    external: true
+    name: mamyda-web
+
+volumes:
+  mamyda-pg:

@@ -1,0 +1,60 @@
+name: Deploy
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        type: choice
+        required: true
+        default: staging
+        options: [staging, production]
+permissions:
+  contents: read
+concurrency:
+  group: deploy-${{ inputs.environment || 'staging' }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment || 'staging' }}
+    env:
+      APP_ENV: ${{ inputs.environment || 'staging' }}
+      VITE_AUTH_ENABLED: 'true'
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+      BETTER_AUTH_URL: ${{ vars.APP_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release branch and configuration
+        env:
+          RELEASE_ENABLED: ${{ vars.RELEASE_ENABLED }}
+        run: |
+          test "$RELEASE_ENABLED" = "true" || { echo 'Enable releases only after completing docs/deployment.md'; exit 1; }
+          if [ "$APP_ENV" = production ]; then test "$GITHUB_REF" = refs/heads/main; fi
+          test -n "$VERCEL_TOKEN"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run check:deploy
+      # Each environment has a separate Vercel project and separate PostgreSQL database.
+      # Both use their project's production target so each has a stable auth origin.
+      - run: npm run build
+      - name: Apply compatible schema changes
+        run: npm run db:migrate
+      - name: Deploy verified output
+        run: npx --yes vercel@59.15.1 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+      - name: Verify deployed configuration and database
+        run: curl --fail --silent --show-error --max-time 15 --retry 5 --retry-delay 3 "$BETTER_AUTH_URL/api/health" > /dev/null

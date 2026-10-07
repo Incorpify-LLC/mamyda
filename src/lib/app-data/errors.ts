@@ -23,7 +23,7 @@ export function classifyCallToolError(
   if (isLoginRequired(result)) {
     return {
       kind: "login",
-      message: "Continue with Grok to load your data.",
+      message: "Sign in to load your data.",
       detail,
     };
   }

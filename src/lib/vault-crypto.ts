@@ -1,6 +1,7 @@
 import * as openpgp from "openpgp";
 
 const SESSION_KEY = "mamyda.vault.priv";
+let unlockedKey: openpgp.PrivateKey | null = null;
 
 export async function generateVaultKey(opts: {
   name: string;
@@ -24,10 +25,7 @@ export async function unlockPrivateKey(
   return openpgp.decryptKey({ privateKey: key, passphrase });
 }
 
-export async function encryptNote(
-  plaintext: string,
-  publicArmored: string,
-): Promise<string> {
+export async function encryptNote(plaintext: string, publicArmored: string): Promise<string> {
   const publicKey = await openpgp.readKey({ armoredKey: publicArmored });
   const message = await openpgp.createMessage({ text: plaintext });
   return openpgp.encrypt({
@@ -49,34 +47,21 @@ export async function decryptNote(
   return result.data.toString();
 }
 
-export function stashUnlockedKey(armoredDecrypted: string): void {
-  try {
-    sessionStorage.setItem(SESSION_KEY, armoredDecrypted);
-  } catch {
-    /* ignore */
-  }
-}
-
+/** Keep decrypted private material in memory only, never Web Storage. */
 export function clearUnlockedKey(): void {
+  unlockedKey = null;
   try {
-    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY); // Remove legacy persisted keys.
   } catch {
-    /* ignore */
+    // SSR and browsers with storage disabled have nothing to remove.
   }
 }
 
 export async function readStashedKey(): Promise<openpgp.PrivateKey | null> {
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    return openpgp.readPrivateKey({ armoredKey: raw });
-  } catch {
-    return null;
-  }
+  return unlockedKey;
 }
 
-export async function stashFromDecrypted(
-  key: openpgp.PrivateKey,
-): Promise<void> {
-  stashUnlockedKey(key.armor());
+export async function stashFromDecrypted(key: openpgp.PrivateKey): Promise<void> {
+  clearUnlockedKey();
+  unlockedKey = key;
 }

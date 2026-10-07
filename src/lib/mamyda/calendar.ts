@@ -1,11 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
-import { ConnectorType } from "@/lib/app-data";
 import { parseIcs } from "@/lib/ics";
 import { nid } from "@/lib/utils";
 import { addDays, iso, startOfDay } from "@/lib/time";
 import { mapEvent, mapSource } from "./map";
+import { requireTurnstile } from "./turnstile.server";
+import { beginCalendarOAuth, listOAuthEvents } from "./calendar-oauth.server";
 import type { CalendarSource } from "./types";
 
 type ConnectorEvent = {
@@ -100,9 +101,8 @@ async function replaceSourceEvents(
 async function syncIcsSource(userId: string, source: CalendarSource) {
   const sql = await getSql();
   if (!source.icsUrl) throw new Error("Missing calendar URL");
-  const res = await fetch(source.icsUrl, { redirect: "follow" });
-  if (!res.ok) throw new Error(`Calendar fetch failed (${res.status})`);
-  const text = await res.text();
+  const { fetchPublicText } = await import("./safe-fetch");
+  const text = await fetchPublicText(source.icsUrl);
   const parsed = parseIcs(text);
   const windowStart = addDays(startOfDay(new Date()), -14).getTime();
   const windowEnd = addDays(startOfDay(new Date()), 90).getTime();
@@ -127,50 +127,7 @@ async function syncIcsSource(userId: string, source: CalendarSource) {
     set last_synced_at = now(), last_error = null
     where id = ${source.id} and user_id = ${userId}
   `;
-}
-
-async function syncConnector(
-  userId: string,
-  source: CalendarSource,
-  connectorType: (typeof ConnectorType)[keyof typeof ConnectorType],
-  toolNames: string[],
-) {
-  const sql = await getSql();
-  const { callTool } = await import("@/lib/app-data/client.server");
-  const timeMin = iso(addDays(startOfDay(new Date()), -14));
-  const timeMax = iso(addDays(startOfDay(new Date()), 90));
-  let lastError = "no matching calendar tool";
-  let loginUrl: string | undefined;
-  for (const tool of toolNames) {
-    const result = await callTool(
-      tool,
-      { timeMin, timeMax, maxResults: 250, calendarId: "primary" },
-      { connectorType },
-    );
-    if (result.loginRequired) {
-      return { loginRequired: true as const, loginUrl: result.loginUrl };
-    }
-    if (!result.ok) {
-      lastError = result.errorMessage ?? lastError;
-      continue;
-    }
-    const events = asList(result.data)
-      .map((ev) => normalizeConnector(ev, source.provider))
-      .filter(Boolean);
-    await replaceSourceEvents(userId, source.id, source.provider, events);
-    await sql`
-      update calendar_sources
-      set last_synced_at = now(), last_error = null
-      where id = ${source.id} and user_id = ${userId}
-    `;
-    return { loginRequired: false as const };
-  }
-  await sql`
-    update calendar_sources
-    set last_error = ${lastError}
-    where id = ${source.id} and user_id = ${userId}
-  `;
-  return { loginRequired: false as const, loginUrl, error: lastError };
+  return events.length;
 }
 
 export const listCalendar = createServerFn({ method: "GET" })
@@ -199,6 +156,7 @@ export const addIcsSource = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { name: string; url: string; provider?: string }) => input)
   .handler(async ({ context, data }) => {
+    await requireTurnstile("calendar-feed");
     const sql = await getSql();
     const url = data.url.trim();
     if (!url.startsWith("https://") && !url.startsWith("http://")) {
@@ -219,55 +177,23 @@ export const addIcsSource = createServerFn({ method: "POST" })
       lastError: null,
     };
     try {
-      await syncIcsSource(context.userId, source);
+      const eventCount = await syncIcsSource(context.userId, source);
+      return { ok: true as const, eventCount };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Sync failed";
       await sql`
         update calendar_sources set last_error = ${msg} where id = ${id} and user_id = ${context.userId}
       `;
+      return { ok: false as const, error: msg };
     }
-    return { ok: true };
   });
 
 export const connectProvider = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { provider: "google" | "outlook" }) => input)
   .handler(async ({ context, data }) => {
-    const sql = await getSql();
-    const existing = await sql<Record<string, unknown>>`
-      select * from calendar_sources
-      where user_id = ${context.userId} and provider = ${data.provider}
-    `;
-    let source = existing[0] ? mapSource(existing[0]) : null;
-    if (!source) {
-      const id = nid();
-      const name = data.provider === "google" ? "Google Calendar" : "Outlook";
-      await sql`
-        insert into calendar_sources (id, user_id, provider, name)
-        values (${id}, ${context.userId}, ${data.provider}, ${name})
-      `;
-      source = {
-        id,
-        provider: data.provider,
-        name,
-        icsUrl: null,
-        enabled: true,
-        lastSyncedAt: null,
-        lastError: null,
-      };
-    }
-    if (data.provider === "google") {
-      return syncConnector(context.userId, source, ConnectorType.GoogleCalendar, [
-        "google_calendar_list_events",
-        "list_events",
-        "calendar_list_events",
-      ]);
-    }
-    return syncConnector(context.userId, source, ConnectorType.OutlookCalendar, [
-      "outlook_calendar_list_events",
-      "list_events",
-      "calendar_list_events",
-    ]);
+    await requireTurnstile("calendar-connect");
+    return { ok: true as const, authorizationUrl: await beginCalendarOAuth(context.userId, data.provider) };
   });
 
 export const syncCalendars = createServerFn({ method: "POST" })
@@ -277,7 +203,6 @@ export const syncCalendars = createServerFn({ method: "POST" })
     const sources = await sql<Record<string, unknown>>`
       select * from calendar_sources where user_id = ${context.userId} and enabled = true
     `;
-    let loginUrl: string | undefined;
     for (const row of sources) {
       const source = mapSource(row);
       if (source.icsUrl) {
@@ -293,20 +218,19 @@ export const syncCalendars = createServerFn({ method: "POST" })
         continue;
       }
       if (source.provider === "google" || source.provider === "outlook") {
-        const result =
-          source.provider === "google"
-            ? await syncConnector(context.userId, source, ConnectorType.GoogleCalendar, [
-                "google_calendar_list_events",
-                "list_events",
-              ])
-            : await syncConnector(context.userId, source, ConnectorType.OutlookCalendar, [
-                "outlook_calendar_list_events",
-                "list_events",
-              ]);
-        if (result.loginRequired) loginUrl = result.loginUrl;
+        try {
+          const events = (await listOAuthEvents(context.userId, source))
+            .map((event) => normalizeConnector(event as ConnectorEvent, source.provider))
+            .filter(Boolean);
+          await replaceSourceEvents(context.userId, source.id, source.provider, events);
+          await sql`update calendar_sources set last_synced_at = now(), last_error = null where id = ${source.id} and user_id = ${context.userId}`;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Sync failed";
+          await sql`update calendar_sources set last_error = ${message} where id = ${source.id} and user_id = ${context.userId}`;
+        }
       }
     }
-    return { loginUrl: loginUrl ?? null };
+    return { loginUrl: null };
   });
 
 export const removeSource = createServerFn({ method: "POST" })
@@ -317,19 +241,4 @@ export const removeSource = createServerFn({ method: "POST" })
     await sql`delete from calendar_events where source_id = ${id} and user_id = ${context.userId}`;
     await sql`delete from calendar_sources where id = ${id} and user_id = ${context.userId}`;
     return { ok: true };
-  });
-
-export const beginGrokLogin = createServerFn({ method: "POST" })
-  .handler(async () => {
-    const { callTool } = await import("@/lib/app-data/client.server");
-    const result = await callTool(
-      "google_calendar_list_events",
-      { maxResults: 1 },
-      { connectorType: ConnectorType.GoogleCalendar },
-    );
-    return {
-      loginRequired: result.loginRequired === true,
-      loginUrl: result.loginUrl ?? null,
-      error: result.errorMessage ?? null,
-    };
   });

@@ -12,6 +12,7 @@ export type Profile = {
   alertsDueSoon: boolean;
   alertsOverdue: boolean;
   alertsMeeting: boolean;
+  telegramLinked: boolean;
 };
 
 export type Client = {

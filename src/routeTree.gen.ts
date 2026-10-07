@@ -18,7 +18,13 @@ import { Route as AppMinutesRouteImport } from './routes/_app/minutes'
 import { Route as AppNotesRouteImport } from './routes/_app/notes'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppVaultRouteImport } from './routes/_app/vault'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
+import { Route as ApiOtpSinkRouteImport } from './routes/api/otp-sink'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiFilesIdRouteImport } from './routes/api/files/$id'
+import { Route as ApiCalendarGoogleCallbackRouteImport } from './routes/api/calendar/google/callback'
+import { Route as ApiCalendarMicrosoftCallbackRouteImport } from './routes/api/calendar/microsoft/callback'
+import { Route as ApiCalendarOutlookCallbackRouteImport } from './routes/api/calendar/outlook/callback'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -64,11 +70,44 @@ const AppVaultRoute = AppVaultRouteImport.update({
   path: '/vault',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOtpSinkRoute = ApiOtpSinkRouteImport.update({
+  id: '/api/otp-sink',
+  path: '/api/otp-sink',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFilesIdRoute = ApiFilesIdRouteImport.update({
+  id: '/api/files/$id',
+  path: '/api/files/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCalendarGoogleCallbackRoute =
+  ApiCalendarGoogleCallbackRouteImport.update({
+    id: '/api/calendar/google/callback',
+    path: '/api/calendar/google/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCalendarMicrosoftCallbackRoute =
+  ApiCalendarMicrosoftCallbackRouteImport.update({
+    id: '/api/calendar/microsoft/callback',
+    path: '/api/calendar/microsoft/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCalendarOutlookCallbackRoute =
+  ApiCalendarOutlookCallbackRouteImport.update({
+    id: '/api/calendar/outlook/callback',
+    path: '/api/calendar/outlook/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -79,7 +118,13 @@ export interface FileRoutesByFullPath {
   '/notes': typeof AppNotesRoute
   '/settings': typeof AppSettingsRoute
   '/vault': typeof AppVaultRoute
+  '/api/health': typeof ApiHealthRoute
+  '/api/otp-sink': typeof ApiOtpSinkRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/files/$id': typeof ApiFilesIdRoute
+  '/api/calendar/google/callback': typeof ApiCalendarGoogleCallbackRoute
+  '/api/calendar/microsoft/callback': typeof ApiCalendarMicrosoftCallbackRoute
+  '/api/calendar/outlook/callback': typeof ApiCalendarOutlookCallbackRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -89,8 +134,14 @@ export interface FileRoutesByTo {
   '/notes': typeof AppNotesRoute
   '/settings': typeof AppSettingsRoute
   '/vault': typeof AppVaultRoute
+  '/api/health': typeof ApiHealthRoute
+  '/api/otp-sink': typeof ApiOtpSinkRoute
   '/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/files/$id': typeof ApiFilesIdRoute
+  '/api/calendar/google/callback': typeof ApiCalendarGoogleCallbackRoute
+  '/api/calendar/microsoft/callback': typeof ApiCalendarMicrosoftCallbackRoute
+  '/api/calendar/outlook/callback': typeof ApiCalendarOutlookCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -102,8 +153,14 @@ export interface FileRoutesById {
   '/_app/notes': typeof AppNotesRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/vault': typeof AppVaultRoute
+  '/api/health': typeof ApiHealthRoute
+  '/api/otp-sink': typeof ApiOtpSinkRoute
   '/_app/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/files/$id': typeof ApiFilesIdRoute
+  '/api/calendar/google/callback': typeof ApiCalendarGoogleCallbackRoute
+  '/api/calendar/microsoft/callback': typeof ApiCalendarMicrosoftCallbackRoute
+  '/api/calendar/outlook/callback': typeof ApiCalendarOutlookCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -116,7 +173,13 @@ export interface FileRouteTypes {
     | '/notes'
     | '/settings'
     | '/vault'
+    | '/api/health'
+    | '/api/otp-sink'
     | '/api/auth/$'
+    | '/api/files/$id'
+    | '/api/calendar/google/callback'
+    | '/api/calendar/microsoft/callback'
+    | '/api/calendar/outlook/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -126,8 +189,14 @@ export interface FileRouteTypes {
     | '/notes'
     | '/settings'
     | '/vault'
+    | '/api/health'
+    | '/api/otp-sink'
     | '/'
     | '/api/auth/$'
+    | '/api/files/$id'
+    | '/api/calendar/google/callback'
+    | '/api/calendar/microsoft/callback'
+    | '/api/calendar/outlook/callback'
   id:
     | '__root__'
     | '/_app'
@@ -138,14 +207,26 @@ export interface FileRouteTypes {
     | '/_app/notes'
     | '/_app/settings'
     | '/_app/vault'
+    | '/api/health'
+    | '/api/otp-sink'
     | '/_app/'
     | '/api/auth/$'
+    | '/api/files/$id'
+    | '/api/calendar/google/callback'
+    | '/api/calendar/microsoft/callback'
+    | '/api/calendar/outlook/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  ApiHealthRoute: typeof ApiHealthRoute
+  ApiOtpSinkRoute: typeof ApiOtpSinkRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiFilesIdRoute: typeof ApiFilesIdRoute
+  ApiCalendarGoogleCallbackRoute: typeof ApiCalendarGoogleCallbackRoute
+  ApiCalendarMicrosoftCallbackRoute: typeof ApiCalendarMicrosoftCallbackRoute
+  ApiCalendarOutlookCallbackRoute: typeof ApiCalendarOutlookCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -213,11 +294,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppVaultRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/otp-sink': {
+      id: '/api/otp-sink'
+      path: '/api/otp-sink'
+      fullPath: '/api/otp-sink'
+      preLoaderRoute: typeof ApiOtpSinkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/files/$id': {
+      id: '/api/files/$id'
+      path: '/api/files/$id'
+      fullPath: '/api/files/$id'
+      preLoaderRoute: typeof ApiFilesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/calendar/google/callback': {
+      id: '/api/calendar/google/callback'
+      path: '/api/calendar/google/callback'
+      fullPath: '/api/calendar/google/callback'
+      preLoaderRoute: typeof ApiCalendarGoogleCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/calendar/microsoft/callback': {
+      id: '/api/calendar/microsoft/callback'
+      path: '/api/calendar/microsoft/callback'
+      fullPath: '/api/calendar/microsoft/callback'
+      preLoaderRoute: typeof ApiCalendarMicrosoftCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/calendar/outlook/callback': {
+      id: '/api/calendar/outlook/callback'
+      path: '/api/calendar/outlook/callback'
+      fullPath: '/api/calendar/outlook/callback'
+      preLoaderRoute: typeof ApiCalendarOutlookCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -248,7 +371,13 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  ApiHealthRoute: ApiHealthRoute,
+  ApiOtpSinkRoute: ApiOtpSinkRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiFilesIdRoute: ApiFilesIdRoute,
+  ApiCalendarGoogleCallbackRoute: ApiCalendarGoogleCallbackRoute,
+  ApiCalendarMicrosoftCallbackRoute: ApiCalendarMicrosoftCallbackRoute,
+  ApiCalendarOutlookCallbackRoute: ApiCalendarOutlookCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

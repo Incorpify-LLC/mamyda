@@ -5,18 +5,30 @@ import { nid } from "@/lib/utils";
 import { formatDay, formatTime } from "@/lib/time";
 import { mapAlert, mapEmail, mapProfile } from "./map";
 
-const FROM = "alerts@mamyda.saneax.in";
-
-async function queueEmail(
-  userId: string,
-  to: string,
-  subject: string,
-  body: string,
-) {
+async function queueEmail(userId: string, to: string, subject: string, body: string, chatId: string | null) {
   const sql = await getSql();
+  let status = "logged";
+  if (process.env.RESEND_API_KEY?.trim()) {
+    try {
+      const { sendResendEmail } = await import("./resend");
+      await sendResendEmail(to, subject, body);
+      status = "sent";
+    } catch {
+      status = "failed";
+    }
+  }
+  if (chatId) {
+    try {
+      const { sendTelegram } = await import("./telegram.server");
+      await sendTelegram(chatId, `${subject}\n${body}`);
+    } catch {
+      /* email status stays the record; Telegram is the extra channel */
+    }
+  }
+  const { MAIL_FROM } = await import("./resend");
   await sql`
     insert into email_log (id, user_id, to_address, from_address, subject, body, status)
-    values (${nid()}, ${userId}, ${to}, ${FROM}, ${subject}, ${body}, ${"logged"})
+    values (${nid()}, ${userId}, ${to}, ${MAIL_FROM()}, ${subject}, ${body}, ${status})
   `;
 }
 
@@ -27,9 +39,12 @@ export const runAlerts = createServerFn({ method: "POST" })
     const profiles = await sql<Record<string, unknown>>`
       select * from profiles where user_id = ${context.userId}
     `;
+    const { startTelegramPoller } = await import("./telegram.server");
+    startTelegramPoller();
     const profile = profiles[0] ? mapProfile(profiles[0]) : null;
     if (!profile) return { created: 0 };
     const to = profile.alertEmail;
+    const chatId = profiles[0]?.telegram_chat_id ? String(profiles[0].telegram_chat_id) : null;
     const now = new Date();
     const in24h = new Date(now.getTime() + 24 * 3600_000);
     const in30 = new Date(now.getTime() + 30 * 60_000);
@@ -43,24 +58,19 @@ export const runAlerts = createServerFn({ method: "POST" })
       entityId: string;
       scheduledFor: string;
     }) {
-      const existing = await sql<{ id: string }>`
-        select id from alerts
-        where user_id = ${context.userId}
-          and kind = ${opts.kind}
-          and entity_id = ${opts.entityId}
-          and scheduled_for = ${opts.scheduledFor}
-      `;
-      if (existing[0]) return;
       const id = nid();
-      await sql`
+      const inserted = await sql`
         insert into alerts (
           id, user_id, kind, title, body, entity_type, entity_id, scheduled_for, sent_at, status
         ) values (
           ${id}, ${context.userId}, ${opts.kind}, ${opts.title}, ${opts.body},
-          ${opts.entityType}, ${opts.entityId}, ${opts.scheduledFor}, now(), ${"logged"}
+          ${opts.entityType}, ${opts.entityId}, ${opts.scheduledFor}, null, ${"logged"}
         )
+        on conflict (user_id, kind, entity_id, scheduled_for) do nothing
+        returning id
       `;
-      if (to) await queueEmail(context.userId, to, opts.title, opts.body);
+      if (!inserted[0]) return;
+      if (to) await queueEmail(context.userId, to, opts.title, opts.body, chatId);
       created += 1;
     }
 

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getWorkspace, seedWorkspace } from "./workspace";
+import { getWorkspace } from "./workspace";
 import { listCalendar } from "./calendar";
 import { listAlerts, runAlerts } from "./alerts";
 import { listMinutes, listNotes, listVault } from "./writing";
@@ -7,11 +7,7 @@ import { listMinutes, listNotes, listVault } from "./writing";
 export function useWorkspace() {
   return useQuery({
     queryKey: ["workspace"],
-    queryFn: async () => {
-      const ws = await getWorkspace();
-      if (!ws.profile.seededAt) return seedWorkspace();
-      return ws;
-    },
+    queryFn: () => getWorkspace(),
   });
 }
 
@@ -19,7 +15,7 @@ export function useCalendar() {
   const ws = useWorkspace();
   return useQuery({
     queryKey: ["calendar"],
-    enabled: Boolean(ws.data?.profile.seededAt),
+    enabled: ws.isSuccess,
     queryFn: () => listCalendar(),
   });
 }
@@ -28,7 +24,7 @@ export function useMinutes() {
   const ws = useWorkspace();
   return useQuery({
     queryKey: ["minutes"],
-    enabled: Boolean(ws.data?.profile.seededAt),
+    enabled: ws.isSuccess,
     queryFn: () => listMinutes(),
   });
 }
@@ -37,7 +33,7 @@ export function useNotes() {
   const ws = useWorkspace();
   return useQuery({
     queryKey: ["notes"],
-    enabled: Boolean(ws.data?.profile.seededAt),
+    enabled: ws.isSuccess,
     queryFn: () => listNotes(),
   });
 }
@@ -54,7 +50,7 @@ export function useAlerts() {
   const qc = useQueryClient();
   const query = useQuery({
     queryKey: ["alerts"],
-    enabled: Boolean(ws.data?.profile.seededAt),
+    enabled: ws.isSuccess,
     queryFn: async () => {
       try {
         await runAlerts();

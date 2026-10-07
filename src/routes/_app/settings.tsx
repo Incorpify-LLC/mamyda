@@ -1,20 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { redirectToLoginIfRequired } from "@/lib/app-data";
-import {
-  addIcsSource,
-  connectProvider,
-  removeSource,
-} from "@/lib/mamyda/calendar";
+import { TurnstileField } from "@/components/turnstile-field";
+import { addIcsSource, connectProvider, removeSource } from "@/lib/mamyda/calendar";
 import { useAlerts, useCalendar, useWorkspace } from "@/lib/mamyda/hooks";
+import { beginTelegramLink } from "@/lib/mamyda/telegram";
 import { clearSampleData, updateProfile } from "@/lib/mamyda/workspace";
 import { formatDay, formatTime } from "@/lib/time";
+import { Bell, CalendarDays, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/settings")({
@@ -28,35 +26,105 @@ function SettingsPage() {
   const profile = ws.data?.profile;
   const [icsName, setIcsName] = useState("Zoho");
   const [icsUrl, setIcsUrl] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState<string | null>(null);
+  const [calendarCaptcha, setCalendarCaptcha] = useState("");
+  const [calendarCaptchaKey, setCalendarCaptchaKey] = useState(0);
+  const [calendarConnectCaptcha, setCalendarConnectCaptcha] = useState("");
+  const [calendarConnectCaptchaKey, setCalendarConnectCaptchaKey] = useState(0);
+  const [profileCaptcha, setProfileCaptcha] = useState("");
+  const [profileCaptchaKey, setProfileCaptchaKey] = useState(0);
+  const [telegramCaptcha, setTelegramCaptcha] = useState("");
+  const [telegramCaptchaKey, setTelegramCaptchaKey] = useState(0);
+  const [alertPrefs, setAlertPrefs] = useState({ dueSoon: true, overdue: true, meeting: true });
+  const [telegram, setTelegram] = useState<{
+    command: string;
+    username: string;
+    link: string;
+  } | null>(null);
+  const [section, setSection] = useState<"calendars" | "alerts" | "workspace">("calendars");
 
-  const alertEmail = email || profile?.alertEmail || "";
+  const alertEmail = email ?? profile?.alertEmail ?? "";
+
+  useEffect(() => {
+    if (!profile) return;
+    setAlertPrefs({
+      dueSoon: profile.alertsDueSoon,
+      overdue: profile.alertsOverdue,
+      meeting: profile.alertsMeeting,
+    });
+  }, [profile]);
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const requestedSection = query.get("section");
+    if (requestedSection === "alerts" || requestedSection === "workspace" || requestedSection === "calendars") {
+      setSection(requestedSection);
+    }
+    const status = query.get("calendar");
+    const provider = query.get("provider") === "outlook" ? "Outlook" : "Google";
+    if (status === "connected") {
+      toast.success(`${provider} Calendar connected. Refresh it from the Calendar page.`);
+    } else if (status === "error") {
+      toast.error(query.get("message") || `${provider} Calendar authorization failed.`);
+    } else {
+      return;
+    }
+    window.history.replaceState({}, "", "/settings?section=calendars");
+  }, []);
+
+  function selectSection(next: "calendars" | "alerts" | "workspace") {
+    setSection(next);
+    window.history.replaceState({}, "", `/settings?section=${next}`);
+  }
 
   return (
     <AppShell title="Settings">
       <div className="mx-auto max-w-2xl space-y-6">
-        <Card className="p-5">
+        <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-card/60 p-1" role="tablist" aria-label="Settings sections">
+          {[
+            { id: "calendars" as const, label: "Calendars", icon: CalendarDays },
+            { id: "alerts" as const, label: "Email alerts", icon: Bell },
+            { id: "workspace" as const, label: "Workspace", icon: Settings2 },
+          ].map((item) => {
+            const Icon = item.icon;
+            const active = section === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => selectSection(item.id)}
+                className={`flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors ${active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+              >
+                <Icon className="size-4" />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {section === "calendars" && <Card className="p-5">
           <h2 className="font-display text-xl">Calendars</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Gmail and Outlook use Grok connectors when this app is published.
-            Zoho (and anything else) can be added as an iCal URL.
+            Connect Google or Microsoft with an account-consent screen, or add any calendar that
+            provides a private iCalendar (.ics) subscription link.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button
               variant="outline"
               onClick={async () => {
-                const result = await connectProvider({ data: { provider: "google" } });
-                if ("loginRequired" in result && result.loginRequired && result.loginUrl) {
-                  redirectToLoginIfRequired({
-                    ok: false,
-                    data: null,
-                    loginRequired: true,
-                    loginUrl: result.loginUrl,
+                try {
+                  const result = await connectProvider({
+                    data: { provider: "google" },
+                    headers: calendarConnectCaptcha ? { "x-turnstile-response": calendarConnectCaptcha } : undefined,
                   });
-                  return;
+                  setCalendarConnectCaptcha("");
+                  setCalendarConnectCaptchaKey((value) => value + 1);
+                  window.location.assign(result.authorizationUrl);
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Google Calendar is not available yet.");
                 }
-                await cal.refetch();
-                toast.success("Google calendar connected");
               }}
             >
               Connect Gmail
@@ -64,35 +132,44 @@ function SettingsPage() {
             <Button
               variant="outline"
               onClick={async () => {
-                const result = await connectProvider({
-                  data: { provider: "outlook" },
-                });
-                if ("loginRequired" in result && result.loginRequired && result.loginUrl) {
-                  redirectToLoginIfRequired({
-                    ok: false,
-                    data: null,
-                    loginRequired: true,
-                    loginUrl: result.loginUrl,
+                try {
+                  const result = await connectProvider({
+                    data: { provider: "outlook" },
+                    headers: calendarConnectCaptcha ? { "x-turnstile-response": calendarConnectCaptcha } : undefined,
                   });
-                  return;
+                  setCalendarConnectCaptcha("");
+                  setCalendarConnectCaptchaKey((value) => value + 1);
+                  window.location.assign(result.authorizationUrl);
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Outlook Calendar is not available yet.");
                 }
-                await cal.refetch();
-                toast.success("Outlook connected");
               }}
             >
               Connect Outlook
             </Button>
           </div>
+          <TurnstileField
+            action="calendar-connect"
+            resetKey={calendarConnectCaptchaKey}
+            onToken={setCalendarConnectCaptcha}
+          />
           <form
             className="mt-5 grid gap-3 sm:grid-cols-[8rem_1fr_auto]"
             onSubmit={async (e) => {
               e.preventDefault();
-              await addIcsSource({
+              const result = await addIcsSource({
                 data: { name: icsName, url: icsUrl, provider: "zoho" },
+                headers: calendarCaptcha ? { "x-turnstile-response": calendarCaptcha } : undefined,
               });
-              setIcsUrl("");
+              setCalendarCaptcha("");
+              setCalendarCaptchaKey((value) => value + 1);
               await cal.refetch();
-              toast.success("Calendar feed added");
+              if (!result.ok) {
+                toast.error(`Calendar feed was saved, but could not sync: ${result.error}`);
+                return;
+              }
+              setIcsUrl("");
+              toast.success(`Calendar feed added — ${result.eventCount} upcoming event${result.eventCount === 1 ? "" : "s"} found.`);
             }}
           >
             <Input
@@ -103,23 +180,22 @@ function SettingsPage() {
             <Input
               value={icsUrl}
               onChange={(e) => setIcsUrl(e.target.value)}
-              placeholder="https://calendar.zoho.com/ical/…"
+              placeholder="https://…/calendar.ics"
               required
             />
             <Button type="submit">Add feed</Button>
           </form>
+          <TurnstileField
+            action="calendar-feed"
+            resetKey={calendarCaptchaKey}
+            onToken={setCalendarCaptcha}
+          />
           <ul className="mt-4 space-y-2">
             {(cal.data?.sources ?? []).map((s) => (
-              <li
-                key={s.id}
-                className="flex items-center justify-between gap-2 text-sm"
-              >
+              <li key={s.id} className="flex items-center justify-between gap-2 text-sm">
                 <span>
-                  {s.name}{" "}
-                  <Badge>{s.provider}</Badge>
-                  {s.lastError && (
-                    <span className="ml-2 text-destructive">{s.lastError}</span>
-                  )}
+                  {s.name} <Badge>{s.provider}</Badge>
+                  {s.lastError && <span className="ml-2 text-destructive">{s.lastError}</span>}
                 </span>
                 <Button
                   variant="ghost"
@@ -134,21 +210,20 @@ function SettingsPage() {
               </li>
             ))}
           </ul>
-        </Card>
+        </Card>}
 
+        {section === "alerts" && <>
         <Card className="p-5">
           <h2 className="font-display text-xl">Email alerts</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            From <span className="font-medium">alerts@mamyda.saneax.in</span> to
-            you. Queued here now; Cloudflare Email Sending is the production
-            path.
+            Alerts appear while you use Mamyda. When mail is configured they also go to this inbox.
           </p>
           <div className="mt-4 space-y-1.5">
             <Label htmlFor="alert-email">Your inbox</Label>
             <Input
               id="alert-email"
               type="email"
-              defaultValue={profile?.alertEmail ?? ""}
+              value={alertEmail}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@saneax.in"
             />
@@ -157,30 +232,24 @@ function SettingsPage() {
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
-                defaultChecked={profile?.alertsDueSoon ?? true}
-                onChange={(e) =>
-                  void updateProfile({ data: { alertsDueSoon: e.target.checked } })
-                }
+                checked={alertPrefs.dueSoon}
+                onChange={(e) => setAlertPrefs((current) => ({ ...current, dueSoon: e.target.checked }))}
               />
               Due in 24 hours
             </label>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
-                defaultChecked={profile?.alertsOverdue ?? true}
-                onChange={(e) =>
-                  void updateProfile({ data: { alertsOverdue: e.target.checked } })
-                }
+                checked={alertPrefs.overdue}
+                onChange={(e) => setAlertPrefs((current) => ({ ...current, overdue: e.target.checked }))}
               />
               Overdue tasks
             </label>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
-                defaultChecked={profile?.alertsMeeting ?? true}
-                onChange={(e) =>
-                  void updateProfile({ data: { alertsMeeting: e.target.checked } })
-                }
+                checked={alertPrefs.meeting}
+                onChange={(e) => setAlertPrefs((current) => ({ ...current, meeting: e.target.checked }))}
               />
               Meetings in 30 minutes
             </label>
@@ -189,13 +258,28 @@ function SettingsPage() {
             className="mt-4"
             variant="outline"
             onClick={async () => {
-              await updateProfile({ data: { alertEmail: alertEmail || null } });
+              await updateProfile({
+                data: {
+                  alertEmail: alertEmail || null,
+                  alertsDueSoon: alertPrefs.dueSoon,
+                  alertsOverdue: alertPrefs.overdue,
+                  alertsMeeting: alertPrefs.meeting,
+                },
+                headers: profileCaptcha ? { "x-turnstile-response": profileCaptcha } : undefined,
+              });
+              setProfileCaptcha("");
+              setProfileCaptchaKey((value) => value + 1);
               await ws.refetch();
               toast.success("Alert preferences saved");
             }}
           >
             Save
           </Button>
+          <TurnstileField
+            action="profile-update"
+            resetKey={profileCaptchaKey}
+            onToken={setProfileCaptcha}
+          />
           <div className="mt-5">
             <h3 className="text-sm font-medium">Outbound log</h3>
             <ul className="mt-2 space-y-2">
@@ -215,10 +299,67 @@ function SettingsPage() {
         </Card>
 
         <Card className="p-5">
+          <h2 className="font-display text-xl">Telegram alerts</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {profile?.telegramLinked
+              ? "This account is linked. Alerts go to Telegram as well as email."
+              : "Email works without Telegram. Linking is optional."}
+          </p>
+          <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+            <li>Generate a one-time link below.</li>
+            <li>Open the verified bot, then press Start. A bot cannot message you until you do.</li>
+            <li>Return here and confirm the account is linked.</li>
+          </ol>
+          {telegram && (
+            <div className="mt-3 space-y-2">
+              <Button asChild variant="secondary">
+                <a href={telegram.link} target="_blank" rel="noreferrer">
+                  Open @{telegram.username} in Telegram
+                </a>
+              </Button>
+              <p className="rounded-md bg-muted px-3 py-2 font-mono text-sm break-all">
+                Or send: {telegram.command}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  await ws.refetch();
+                  toast.success("Link status refreshed.");
+                }}
+              >
+                I pressed Start — check status
+              </Button>
+            </div>
+          )}
+          <Button
+            className="mt-4"
+            variant="outline"
+            onClick={async () => {
+              const next = await beginTelegramLink({
+                headers: telegramCaptcha ? { "x-turnstile-response": telegramCaptcha } : undefined,
+              });
+              setTelegram(next);
+              setTelegramCaptcha("");
+              setTelegramCaptchaKey((value) => value + 1);
+              toast.success("Code ready. Send it to the bot.");
+            }}
+          >
+            {telegram ? "New Telegram code" : "Get a Telegram code"}
+          </Button>
+          <TurnstileField
+            action="telegram-link"
+            resetKey={telegramCaptchaKey}
+            onToken={setTelegramCaptcha}
+          />
+        </Card>
+        </>}
+
+        {section === "workspace" && <Card className="p-5">
           <h2 className="font-display text-xl">Workspace</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Timezone is Asia/Kolkata. Sample clients and events are there so
-            the desk is not empty — remove them when you are ready.
+            Timezone is Asia/Kolkata. New accounts start empty. You can remove legacy sample data;
+            projects containing your work are preserved.
           </p>
           <Button
             className="mt-4"
@@ -232,23 +373,7 @@ function SettingsPage() {
           >
             Remove sample data
           </Button>
-        </Card>
-
-        <Card className="p-5">
-          <h2 className="font-display text-xl">Cloudflare production</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            DNS for mamyda.saneax.in is already in place. When you are ready to
-            host this on Cloudflare:
-          </p>
-          <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-            <li>Workers Paid + Zero Trust on the account</li>
-            <li>Worker custom domain mamyda.saneax.in</li>
-            <li>D1 database for this schema, private R2 bucket for vault blobs</li>
-            <li>Access policy: your email only, one-time PIN or Google</li>
-            <li>Email Sending onboarded on mamyda.saneax.in</li>
-            <li>Cron every 10 minutes to sync calendars and fire alerts</li>
-          </ol>
-        </Card>
+        </Card>}
       </div>
     </AppShell>
   );

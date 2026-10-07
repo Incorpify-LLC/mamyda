@@ -1,3 +1,5 @@
+import { APP_TZ, zonedDate } from "./time";
+
 export type ParsedEvent = {
   uid: string;
   title: string;
@@ -21,38 +23,36 @@ function unescapeIcs(value: string): string {
     .replace(/\\\\/g, "\\");
 }
 
-function parseIcsDate(raw: string): { iso: string; allDay: boolean } | null {
-  const value = raw.trim();
-  if (/^\d{8}$/.test(value)) {
-    const y = Number(value.slice(0, 4));
-    const m = Number(value.slice(4, 6));
-    const d = Number(value.slice(6, 8));
-    return { iso: new Date(Date.UTC(y, m - 1, d)).toISOString(), allDay: true };
+function parseIcsDate(raw: string, params = ""): { iso: string; allDay: boolean } | null {
+  const match = raw.trim().match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/);
+  if (!match) return null;
+  const [, ys, ms, ds, hs, mins, ss, utc] = match;
+  const y = Number(ys),
+    m = Number(ms),
+    d = Number(ds);
+  const h = Number(hs ?? 0),
+    minute = Number(mins ?? 0),
+    second = Number(ss ?? 0);
+  const check = new Date(Date.UTC(y, m - 1, d, h, minute, second));
+  if (
+    check.getUTCFullYear() !== y ||
+    check.getUTCMonth() !== m - 1 ||
+    check.getUTCDate() !== d ||
+    h > 23 ||
+    minute > 59 ||
+    second > 59
+  )
+    return null;
+  const timeZone = params.match(/(?:^|;)TZID="?([^;"\r\n]+)/i)?.[1] ?? APP_TZ;
+  try {
+    const date = utc
+      ? check
+      : new Date(zonedDate(y, m, d, h, minute, timeZone).getTime() + second * 1000);
+    return { iso: date.toISOString(), allDay: hs === undefined };
+  } catch {
+    // Unsupported timezone or malformed calendar date: skip this entry.
+    return null;
   }
-  const m = value.match(
-    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/,
-  );
-  if (!m) return null;
-  const [, ys, ms, ds, hs, mins, ss, z] = m;
-  if (z) {
-    return {
-      iso: new Date(
-        Date.UTC(+ys!, +ms! - 1, +ds!, +hs!, +mins!, +ss!),
-      ).toISOString(),
-      allDay: false,
-    };
-  }
-  return {
-    iso: new Date(
-      +ys!,
-      +ms! - 1,
-      +ds!,
-      +hs!,
-      +mins!,
-      +ss!,
-    ).toISOString(),
-    allDay: false,
-  };
 }
 
 function field(block: string, name: string): string | null {
@@ -76,13 +76,12 @@ export function parseIcs(ics: string): ParsedEvent[] {
   const events: ParsedEvent[] = [];
   for (const raw of blocks) {
     const block = raw.split(/END:VEVENT/i)[0] ?? raw;
-    const dtstartLine =
-      block.match(/^DTSTART([^:\n]*):([^\n]+)/im) ?? null;
+    const dtstartLine = block.match(/^DTSTART([^:\n]*):([^\n]+)/im) ?? null;
     if (!dtstartLine?.[2]) continue;
-    const start = parseIcsDate(dtstartLine[2]);
+    const start = parseIcsDate(dtstartLine[2], dtstartLine[1]);
     if (!start) continue;
     const dtendLine = block.match(/^DTEND([^:\n]*):([^\n]+)/im);
-    const end = dtendLine?.[2] ? parseIcsDate(dtendLine[2]) : null;
+    const end = dtendLine?.[2] ? parseIcsDate(dtendLine[2], dtendLine[1]) : null;
     const title = field(block, "SUMMARY") ?? "(No title)";
     const uid = field(block, "UID") ?? `${title}-${start.iso}`;
     const attendees = allFields(block, "ATTENDEE")

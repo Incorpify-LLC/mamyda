@@ -6,10 +6,12 @@ import {
   LayoutDashboard,
   Lock,
   Menu,
+  Moon,
   NotebookPen,
   Settings,
+  Sun,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -73,6 +75,22 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("mamyda-theme");
+    const next = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+  }, []);
+
+  function toggleTheme() {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    window.localStorage.setItem("mamyda-theme", next ? "dark" : "light");
+  }
+
   return (
     <div className="min-h-dvh bg-background">
       <aside className="fixed inset-y-0 left-0 hidden w-56 flex-col border-r border-border bg-card/80 px-3 py-5 md:flex">
@@ -100,7 +118,18 @@ export function AppShell({
           <h1 className="font-display text-xl tracking-tight md:text-2xl">
             {title}
           </h1>
-          <div className="ml-auto flex items-center gap-2">{action}</div>
+          <div className="ml-auto flex items-center gap-2">
+            {action}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              aria-label={dark ? "Use light theme" : "Use dark theme"}
+              title={dark ? "Use light theme" : "Use dark theme"}
+            >
+              {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            </Button>
+          </div>
         </header>
         <div className="px-4 py-5 pb-24 md:px-8 md:pb-10">{children}</div>
       </div>

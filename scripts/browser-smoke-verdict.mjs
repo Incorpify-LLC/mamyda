@@ -117,9 +117,11 @@ export function baselineComparison(current, rawText) {
   }
   return compareToBaseline(current, baseline);
 }
-export function exitCodeFor(viewports) {
+export function exitCodeFor(viewports, verdict = {}) {
   const list = Object.values(viewports ?? {});
   if (list.length === 0) return 1;
+  if (verdict.divergesFromBaseline) return 3;
+  if (list.some((v) => v.bodyTextLen === 0 || v.horizontalOverflow === true)) return 3;
   if (list.some((v) => (v.status ?? 0) >= 400 || (v.status ?? 0) === 0)) return 1;
   if (list.some((v) => (v.consoleErrors?.length ?? 0) > 0 || (v.pageErrors?.length ?? 0) > 0)) {
     return 2;

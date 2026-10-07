@@ -30,13 +30,14 @@
  * a verified id via `@/lib/auth/middleware`.
  */
 import { betterAuth } from "better-auth";
-import { bearer, genericOAuth } from "better-auth/plugins";
+import { bearer, captcha, emailOTP, genericOAuth } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
 import { emailAndPasswordEnabled } from "./email-password";
+import { sendVerificationOTP } from "./otp-mail";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
@@ -245,6 +246,26 @@ export const auth = betterAuth({
     // fires when an Authorization header is present, so the cookie path
     // (deployed apps) is unaffected.
     bearer(),
+
+    emailOTP({
+      otpLength: 6,
+      expiresIn: 300,
+      allowedAttempts: 5,
+      storeOTP: "hashed",
+      sendVerificationOTP,
+    }),
+
+    // Turnstile on the code request and the code submission. Off when the
+    // secret is absent so local tests can run; staging health requires it.
+    ...(env("TURNSTILE_SECRET_KEY")
+      ? [
+          captcha({
+            provider: "cloudflare-turnstile",
+            secretKey: env("TURNSTILE_SECRET_KEY") ?? "",
+            endpoints: ["/email-otp/send-verification-otp", "/sign-in/email-otp"],
+          }),
+        ]
+      : []),
 
     // Bridges Better Auth's Set-Cookie into TanStack Start responses. MUST be
     // last so it runs after every other plugin's hooks.

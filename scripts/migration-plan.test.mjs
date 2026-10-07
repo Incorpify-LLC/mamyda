@@ -56,9 +56,10 @@ test("non-.sql entries are dropped (readdir also yields the auth/ directory)", (
   assert.deepEqual(pendingMigrations(["auth", "README.md"], []), []);
 });
 
-test("the auth schema ships outside the globbed directory", () => {
+test("Mamyda includes auth and application migrations", () => {
   const migrationsDir = join(projectRoot(), "migrations");
-  assert.deepEqual(pendingMigrations(readdirSync(migrationsDir), []), []);
+  assert.ok(pendingMigrations(readdirSync(migrationsDir), []).some(m => m.name === AUTH_MIGRATION));
+  assert.ok(pendingMigrations(readdirSync(migrationsDir), []).some(m => m.name === "0002_mamyda.sql"));
   assert.ok(readdirSync(join(migrationsDir, "auth")).includes("0001_auth.sql"));
 });
 

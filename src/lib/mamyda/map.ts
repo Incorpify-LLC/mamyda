@@ -52,6 +52,7 @@ export function mapProfile(row: Record<string, unknown>): Profile {
     alertsDueSoon: bool(row.alerts_due_soon),
     alertsOverdue: bool(row.alerts_overdue),
     alertsMeeting: bool(row.alerts_meeting),
+    telegramLinked: Boolean(str(row.telegram_chat_id)),
   };
 }
 

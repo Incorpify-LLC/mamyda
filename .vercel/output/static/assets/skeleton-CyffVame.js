@@ -1,1 +1,0 @@
-import{a as e}from"./useNavigate-Bcmz3Es-.js";import{t}from"./utils-DNn_1FFS.js";var n=e();function r({className:e}){return(0,n.jsx)(`div`,{className:t(`animate-pulse rounded-md bg-muted`,e)})}export{r as t};

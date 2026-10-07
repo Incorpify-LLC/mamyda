@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { Pencil } from "lucide-react";
 import { AppShell, colorDot } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TurnstileField } from "@/components/turnstile-field";
 import { CLIENT_COLORS, PRIORITIES, TASK_COLUMNS } from "@/lib/columns";
 import {
   archiveClient,
@@ -22,6 +24,7 @@ import {
   upsertProject,
   upsertTask,
 } from "@/lib/mamyda/workspace";
+import { deleteClientFile, listClientFiles, uploadClientFile } from "@/lib/mamyda/files";
 import { useWorkspace } from "@/lib/mamyda/hooks";
 import { formatDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -42,6 +45,8 @@ function BoardPage() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [clientOpen, setClientOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState(false);
+  const [editingProject, setEditingProject] = useState(false);
   const [task, setTask] = useState<Partial<Task> | null>(null);
 
   const clients = ws.data?.clients ?? [];
@@ -68,17 +73,53 @@ function BoardPage() {
       title="Board"
       action={
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setClientOpen(true)}>
-            Client
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setEditingClient(false);
+              setClientOpen(true);
+            }}
+          >
+            New client
           </Button>
+          {selectedClient && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setEditingClient(true);
+                setClientOpen(true);
+              }}
+            >
+              <Pencil className="size-3.5" aria-hidden="true" />
+              Edit client
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
             disabled={!selectedClient}
-            onClick={() => setProjectOpen(true)}
+            onClick={() => {
+              setEditingProject(false);
+              setProjectOpen(true);
+            }}
           >
-            Project
+            New project
           </Button>
+          {selectedProject && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setEditingProject(true);
+                setProjectOpen(true);
+              }}
+            >
+              <Pencil className="size-3.5" aria-hidden="true" />
+              Edit project
+            </Button>
+          )}
         </div>
       }
     >
@@ -208,10 +249,13 @@ function BoardPage() {
         </p>
       )}
 
+      {selectedClient && <ClientFiles clientId={selectedClient.id} />}
+
       <ClientDialog
         open={clientOpen}
         onOpenChange={setClientOpen}
         client={selectedClient}
+        editing={editingClient}
         onSaved={refresh}
       />
       <ProjectDialog
@@ -219,6 +263,7 @@ function BoardPage() {
         onOpenChange={setProjectOpen}
         client={selectedClient}
         project={selectedProject}
+        editing={editingProject}
         onSaved={refresh}
       />
       <TaskDialog task={task} onClose={() => setTask(null)} onSaved={refresh} />
@@ -230,25 +275,29 @@ function ClientDialog({
   open,
   onOpenChange,
   client,
+  editing,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   client?: Client;
+  editing: boolean;
   onSaved: () => void;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [color, setColor] = useState("sage");
   const [creating, setCreating] = useState(true);
+  const [captcha, setCaptcha] = useState("");
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   useEffect(() => {
     if (!open) return;
-    setCreating(true);
-    setName("");
-    setEmail("");
-    setColor("sage");
-  }, [open]);
+    setCreating(!editing);
+    setName(editing ? client?.name ?? "" : "");
+    setEmail(editing ? client?.email ?? "" : "");
+    setColor(editing ? client?.color ?? "sage" : "sage");
+  }, [client, editing, open]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -265,7 +314,10 @@ function ClientDialog({
                 email,
                 color,
               },
+              headers: captcha ? { "x-turnstile-response": captcha } : undefined,
             });
+            setCaptcha("");
+            setCaptchaKey((value) => value + 1);
             toast.success(creating ? "Client added" : "Client saved");
             onOpenChange(false);
             onSaved();
@@ -303,13 +355,17 @@ function ClientDialog({
               />
             ))}
           </div>
+          <TurnstileField action="client-manage" resetKey={captchaKey} onToken={setCaptcha} />
           <div className="flex justify-between pt-2">
             {!creating && client && (
               <Button
                 type="button"
                 variant="ghost"
                 onClick={async () => {
-                  await archiveClient({ data: client.id });
+                  await archiveClient({
+                    data: client.id,
+                    headers: captcha ? { "x-turnstile-response": captcha } : undefined,
+                  });
                   onOpenChange(false);
                   onSaved();
                 }}
@@ -322,20 +378,6 @@ function ClientDialog({
             </Button>
           </div>
         </form>
-        {client && creating && (
-          <Button
-            variant="secondary"
-            className="mt-2 w-full"
-            onClick={() => {
-              setCreating(false);
-              setName(client.name);
-              setEmail(client.email ?? "");
-              setColor(client.color);
-            }}
-          >
-            Edit {client.name}
-          </Button>
-        )}
       </DialogContent>
     </Dialog>
   );
@@ -346,24 +388,28 @@ function ProjectDialog({
   onOpenChange,
   client,
   project,
+  editing,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   client?: Client;
   project?: Project;
+  editing: boolean;
   onSaved: () => void;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [creating, setCreating] = useState(true);
+  const [captcha, setCaptcha] = useState("");
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   useEffect(() => {
     if (!open) return;
-    setCreating(true);
-    setName("");
-    setDescription("");
-  }, [open]);
+    setCreating(!editing);
+    setName(editing ? project?.name ?? "" : "");
+    setDescription(editing ? project?.description ?? "" : "");
+  }, [editing, open, project]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -381,7 +427,10 @@ function ProjectDialog({
                 name,
                 description,
               },
+              headers: captcha ? { "x-turnstile-response": captcha } : undefined,
             });
+            setCaptcha("");
+            setCaptchaKey((value) => value + 1);
             toast.success("Project saved");
             onOpenChange(false);
             onSaved();
@@ -410,7 +459,10 @@ function ProjectDialog({
                 type="button"
                 variant="ghost"
                 onClick={async () => {
-                  await archiveProject({ data: project.id });
+                  await archiveProject({
+                    data: project.id,
+                    headers: captcha ? { "x-turnstile-response": captcha } : undefined,
+                  });
                   onOpenChange(false);
                   onSaved();
                 }}
@@ -422,20 +474,8 @@ function ProjectDialog({
               Save
             </Button>
           </div>
+          <TurnstileField action="project-manage" resetKey={captchaKey} onToken={setCaptcha} />
         </form>
-        {project && creating && (
-          <Button
-            variant="secondary"
-            className="mt-2 w-full"
-            onClick={() => {
-              setCreating(false);
-              setName(project.name);
-              setDescription(project.description ?? "");
-            }}
-          >
-            Edit {project.name}
-          </Button>
-        )}
       </DialogContent>
     </Dialog>
   );
@@ -454,6 +494,8 @@ function TaskDialog({
   const [notes, setNotes] = useState("");
   const [priority, setPriority] = useState("normal");
   const [dueAt, setDueAt] = useState("");
+  const [captcha, setCaptcha] = useState("");
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   const open = Boolean(task);
   const isNew = !task?.id;
@@ -490,7 +532,10 @@ function TaskDialog({
                 priority,
                 dueAt: dueAt ? new Date(dueAt).toISOString() : null,
               },
+              headers: captcha ? { "x-turnstile-response": captcha } : undefined,
             });
+            setCaptcha("");
+            setCaptchaKey((value) => value + 1);
             toast.success("Task saved");
             onClose();
             onSaved();
@@ -545,7 +590,10 @@ function TaskDialog({
                 type="button"
                 variant="ghost"
                 onClick={async () => {
-                  await deleteTask({ data: task.id! });
+                  await deleteTask({
+                    data: task.id!,
+                    headers: captcha ? { "x-turnstile-response": captcha } : undefined,
+                  });
                   onClose();
                   onSaved();
                 }}
@@ -557,8 +605,90 @@ function TaskDialog({
               Save
             </Button>
           </div>
+          <TurnstileField action="task-manage" resetKey={captchaKey} onToken={setCaptcha} />
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ClientFiles({ clientId }: { clientId: string }) {
+  const [files, setFiles] = useState<Array<{ id: string; name: string; byte_size: number }>>([]);
+  const [note, setNote] = useState<string | null>(null);
+
+  async function refresh() {
+    const rows = await listClientFiles({ data: clientId });
+    setFiles(rows);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void listClientFiles({ data: clientId })
+      .then((rows) => {
+        if (!cancelled) setFiles(rows);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setNote(error instanceof Error ? error.message : "Could not list files");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
+  return (
+    <Card className="mb-4 p-4">
+      <h2 className="text-sm font-medium">Client files</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Stored in the file bucket, not in the database. Up to 8 MB. PDF, images, text, and Office documents.
+      </p>
+      <label className="mt-3 inline-flex cursor-pointer text-sm underline-offset-4 hover:underline">
+        Upload
+        <input
+          className="sr-only"
+          type="file"
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            const base64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+              reader.onerror = () => reject(new Error("Could not read the file"));
+              reader.readAsDataURL(file);
+            });
+            try {
+              await uploadClientFile({
+                data: { clientId, name: file.name, contentType: file.type || "application/octet-stream", base64 },
+              });
+              setNote(null);
+              await refresh();
+            } catch (error) {
+              setNote(error instanceof Error ? error.message : "Upload failed");
+            }
+          }}
+        />
+      </label>
+      {note && <p className="mt-2 text-sm text-destructive">{note}</p>}
+      <ul className="mt-3 space-y-1">
+        {files.map((file) => (
+          <li key={file.id} className="flex items-center justify-between gap-2 text-sm">
+            <a className="truncate underline-offset-4 hover:underline" href={`/api/files/${file.id}`}>
+              {file.name}
+            </a>
+            <button
+              type="button"
+              className="text-muted-foreground"
+              onClick={async () => {
+                await deleteClientFile({ data: file.id });
+                await refresh();
+              }}
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+        {files.length === 0 && <li className="text-sm text-muted-foreground">No files yet.</li>}
+      </ul>
+    </Card>
   );
 }
