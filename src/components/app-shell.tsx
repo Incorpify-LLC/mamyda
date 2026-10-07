@@ -16,6 +16,7 @@ import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { GlobalSearch } from "@/components/global-search";
 
 const NAV = [
   { to: "/", label: "Today", icon: LayoutDashboard },
@@ -116,6 +117,7 @@ export function AppShell({
             {title}
           </h1>
           <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+            <GlobalSearch />
             {action}
             <Button
               variant="ghost"

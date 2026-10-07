@@ -4,36 +4,37 @@ import { listCalendar } from "./calendar";
 import { listAlerts, runAlerts } from "./alerts";
 import { listMinutes, listNotes, listVault } from "./writing";
 
-export function useWorkspace() {
+export function useWorkspace(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["workspace"],
     queryFn: () => getWorkspace(),
+    enabled: options.enabled ?? true,
   });
 }
 
-export function useCalendar() {
-  const ws = useWorkspace();
+export function useCalendar(options: { enabled?: boolean } = {}) {
+  const ws = useWorkspace(options);
   return useQuery({
     queryKey: ["calendar"],
-    enabled: ws.isSuccess,
+    enabled: ws.isSuccess && (options.enabled ?? true),
     queryFn: () => listCalendar(),
   });
 }
 
-export function useMinutes() {
-  const ws = useWorkspace();
+export function useMinutes(options: { enabled?: boolean } = {}) {
+  const ws = useWorkspace(options);
   return useQuery({
     queryKey: ["minutes"],
-    enabled: ws.isSuccess,
+    enabled: ws.isSuccess && (options.enabled ?? true),
     queryFn: () => listMinutes(),
   });
 }
 
-export function useNotes() {
-  const ws = useWorkspace();
+export function useNotes(options: { enabled?: boolean } = {}) {
+  const ws = useWorkspace(options);
   return useQuery({
     queryKey: ["notes"],
-    enabled: ws.isSuccess,
+    enabled: ws.isSuccess && (options.enabled ?? true),
     queryFn: () => listNotes(),
   });
 }

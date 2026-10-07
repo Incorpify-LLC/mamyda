@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,7 +14,12 @@ import { toast } from "sonner";
 import type { Minute } from "@/lib/mamyda/types";
 import { useWritingDraft } from "@/components/writing-draft";
 
-export const Route = createFileRoute("/_app/minutes")({ component: MinutesPage });
+export const Route = createFileRoute("/_app/minutes")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...(typeof search.minuteId === "string" ? { minuteId: search.minuteId } : {}),
+  }),
+  component: MinutesPage,
+});
 
 function emptyMinute(): Minute {
   return {
@@ -30,6 +35,7 @@ function emptyMinute(): Minute {
 }
 
 function MinutesPage() {
+  const search = Route.useSearch();
   const list = useMinutes();
   const ws = useWorkspace();
   const cal = useCalendar();
@@ -37,6 +43,15 @@ function MinutesPage() {
   const [baseline, setBaseline] = useState<Minute>(emptyMinute());
   const [polishing, setPolishing] = useState(false);
   const selectedId = current.id || null;
+
+  useEffect(() => {
+    if (!search.minuteId || !list.data) return;
+    const match = list.data.find((minute) => minute.id === search.minuteId);
+    if (match && current.id !== match.id) {
+      setCurrent(match);
+      setBaseline(match);
+    }
+  }, [search.minuteId, list.data, current.id]);
 
   const events = useMemo(() => cal.data?.events ?? [], [cal.data]);
 
