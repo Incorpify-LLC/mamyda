@@ -1,37 +1,40 @@
 # Mamyda
 
 A personal client-work workspace: daily agenda, client/project task boards,
-calendar, tagged notes, meeting minutes, and a browser-encrypted vault.
-Each signed-in account owns its own data. Client records are **not** shared
-organizations or SaaS tenants with members and roles.
+calendars, tagged notes, meeting minutes, and a browser-encrypted vault.
+Each signed-in account owns its own data.
 
 ## Development
 
-Use Node 24 and `npm ci`. Run `sh startup.sh` to start the development app.
-Authentication is enabled; create an email/password account in the app.
+Use Node 24 and `npm ci`. Run `sh startup.sh` to start development.
 Without `DATABASE_URL`, development uses temporary PGlite data that disappears
 when the server restarts. New accounts start empty.
 
-- `npm test`: platform tests and application regression tests.
-- `npm run test:e2e`: real browser signup, CRUD, settings, vault and isolation tests
-  against a running local server. Creates disposable QA accounts; never run on production.
+- `npm test`: platform and application regression tests.
+- `npm run test:e2e`: browser signup, CRUD, settings, vault and isolation tests
+  against a local server. Creates disposable accounts; never run on production.
 - `npm run typecheck` / `npm run lint`: static checks.
-- `npm run build`: validates deployment configuration and emits the Vercel artifact,
-  including database runtime assets. Does **not** mutate the database.
-- `npm run db:migrate`: explicit, transactional PostgreSQL schema migration.
+- `npm run build`: emits the Vercel artifact without modifying the database.
+- `npm run build:container`: builds the Node service used on pi03.
+- `npm run db:migrate`: transactional PostgreSQL schema migration.
 - `npm run preview:restart`: serves the built artifact for verification.
 
-For built email-auth tests, set `BETTER_AUTH_URL=http://127.0.0.1:8081` when
-starting the preview and `E2E_BASE_URL=http://127.0.0.1:8081` for the test.
-Inject configuration through the environment; do not commit secrets or `.env` files.
+Inject configuration through the environment. Never commit secrets or `.env` files.
+See [deployment setup](docs/deployment.md), [testing](docs/testing.md), and
+[the audit](docs/audit.md).
 
-## Status
+## Integrations
 
-Core workflows have regression and browser coverage. This is a foundation for a
-SaaS launch, not a completed commercial SaaS service. Calendar connectors still
-depend on the Grok gate; alert emails are logged, not delivered. Billing,
-organizations, invitations and roles are not implemented.
+Google and Microsoft calendars use direct OAuth with encrypted token storage.
+Google requests event read/write access; Microsoft requests calendar read/write
+access. Calendar Sync imports upcoming events. Private iCalendar subscription
+links support other providers. Write consent alone does not create event-editing
+controls in Mamyda.
 
-See [the audit](docs/audit.md), [deployment setup](docs/deployment.md), and
-[testing approach](docs/testing.md). Repository agent instructions remain in
-[AGENTS.md](AGENTS.md).
+Email OTP and alerts use Resend. Telegram alerts use a verified bot with one-time
+account linking. Turnstile protects the integrated forms. Settings has Calendar,
+Email alerts, and Workspace tabs; the header provides a persistent theme toggle.
+
+The live deployment is `https://mamyda.incorpify.in`, served by Node and PostgreSQL
+on pi03 through a Cloudflare Tunnel. Billing, shared organizations, invitations,
+and roles are not implemented.
