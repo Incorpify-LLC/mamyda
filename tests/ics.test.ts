@@ -2,6 +2,10 @@ import { expect, test } from "vitest";
 import { parseIcs } from "@/lib/ics";
 const event = (start: string) =>
   `BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:test\r\nSUMMARY:Standup\r\n${start}\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+test("explicit recurrence instances retain their identities and cancelled events are ignored", () => {
+  expect(parseIcs(event("DTSTART:20260910T090000Z\r\nRECURRENCE-ID:20260909T090000Z"))[0].recurrenceId).toBe("20260909T090000Z");
+  expect(parseIcs(event("DTSTART:20260910T090000Z\r\nSTATUS:CANCELLED"))).toEqual([]);
+});
 test("calendar timestamps honor TZID instead of the server timezone", () => {
   expect(parseIcs(event("DTSTART;TZID=Asia/Kolkata:20260910T090000"))[0].startsAt).toBe(
     "2026-09-10T03:30:00.000Z",

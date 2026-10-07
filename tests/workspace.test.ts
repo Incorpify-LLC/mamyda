@@ -37,6 +37,7 @@ let db: PGlite;
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(readFileSync("migrations/0002_mamyda.sql", "utf8"));
+  await db.exec(readFileSync("migrations/0005_calendar_sync.sql", "utf8"));
   state.sql = async (parts: TemplateStringsArray, ...args: unknown[]) => {
     const query = parts.reduce((text, part, i) => text + (i ? `$${i}` : "") + part, "");
     return (await db.query(query, args)).rows;

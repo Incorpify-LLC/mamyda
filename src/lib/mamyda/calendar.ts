@@ -8,8 +8,12 @@ import { mapEvent, mapSource } from "./map";
 import { requireTurnstile } from "./turnstile.server";
 import { beginCalendarOAuth, listOAuthEvents } from "./calendar-oauth.server";
 import type { CalendarSource } from "./types";
+import { reconcileEvents } from "./calendar-reconcile.server";
 
 type ConnectorEvent = {
+  status?: string;
+  isCancelled?: boolean;
+  isAllDay?: boolean;
   id?: string;
   iCalUID?: string;
   summary?: string;
@@ -25,17 +29,6 @@ type ConnectorEvent = {
   attendees?: Array<{ email?: string; emailAddress?: { address?: string } }>;
 };
 
-function asList(data: unknown): ConnectorEvent[] {
-  if (Array.isArray(data)) return data as ConnectorEvent[];
-  if (data && typeof data === "object") {
-    const obj = data as Record<string, unknown>;
-    for (const key of ["events", "items", "value", "data"]) {
-      if (Array.isArray(obj[key])) return obj[key] as ConnectorEvent[];
-    }
-  }
-  return [];
-}
-
 function normalizeConnector(
   ev: ConnectorEvent,
   provider: string,
@@ -50,9 +43,11 @@ function normalizeConnector(
   attendees: string[];
 } | null {
   const startRaw = ev.start?.dateTime ?? ev.start?.date ?? ev.startTime;
-  if (!startRaw) return null;
+  if (ev.status === "cancelled" || ev.isCancelled) return null;
+  if (!startRaw || !ev.id && !ev.iCalUID) throw new Error("Calendar returned an incomplete event; previous events were kept.");
   const endRaw = ev.end?.dateTime ?? ev.end?.date ?? ev.endTime ?? null;
-  const allDay = Boolean(ev.start?.date && !ev.start.dateTime);
+  const allDay = Boolean(ev.isAllDay || ev.start?.date && !ev.start.dateTime);
+  const toDate = (raw: string) => new Date(provider === "outlook" && !/Z$|[+-]\d\d:\d\d$/.test(raw) ? `${raw}Z` : raw).toISOString();
   const loc =
     typeof ev.location === "string"
       ? ev.location
@@ -65,8 +60,8 @@ function normalizeConnector(
     title: ev.summary ?? ev.title ?? ev.subject ?? "(No title)",
     description: ev.description ?? ev.bodyPreview ?? "",
     location: loc,
-    startsAt: new Date(startRaw).toISOString(),
-    endsAt: endRaw ? new Date(endRaw).toISOString() : null,
+    startsAt: toDate(startRaw),
+    endsAt: endRaw ? toDate(endRaw) : null,
     allDay,
     attendees,
   };
@@ -79,30 +74,14 @@ async function replaceSourceEvents(
   events: ReturnType<typeof normalizeConnector>[],
 ) {
   const sql = await getSql();
-  await sql`
-    delete from calendar_events
-    where user_id = ${userId} and source_id = ${sourceId} and is_sample = false
-  `;
-  for (const ev of events) {
-    if (!ev) continue;
-    await sql`
-      insert into calendar_events (
-        id, user_id, source_id, source_provider, external_id, title, description,
-        location, starts_at, ends_at, all_day, attendees, is_sample
-      ) values (
-        ${nid()}, ${userId}, ${sourceId}, ${provider}, ${ev.externalId}, ${ev.title},
-        ${ev.description || null}, ${ev.location || null}, ${ev.startsAt}, ${ev.endsAt},
-        ${ev.allDay}, ${JSON.stringify(ev.attendees)}, false
-      )
-    `;
-  }
+  return reconcileEvents(sql, userId, sourceId, provider, events.filter((ev): ev is NonNullable<typeof ev> => ev !== null));
 }
 
 async function syncIcsSource(userId: string, source: CalendarSource) {
-  const sql = await getSql();
   if (!source.icsUrl) throw new Error("Missing calendar URL");
   const { fetchPublicText } = await import("./safe-fetch");
   const text = await fetchPublicText(source.icsUrl);
+  if (!text.includes("BEGIN:VCALENDAR") || !text.includes("END:VCALENDAR")) throw new Error("This URL did not return a valid calendar feed; previous events were kept.");
   const parsed = parseIcs(text);
   const windowStart = addDays(startOfDay(new Date()), -14).getTime();
   const windowEnd = addDays(startOfDay(new Date()), 90).getTime();
@@ -112,7 +91,7 @@ async function syncIcsSource(userId: string, source: CalendarSource) {
       return t >= windowStart && t <= windowEnd;
     })
     .map((e) => ({
-      externalId: e.uid,
+      externalId: e.recurrenceId ? `${e.uid}#${e.recurrenceId}` : e.uid,
       title: e.title,
       description: e.description,
       location: e.location,
@@ -121,13 +100,7 @@ async function syncIcsSource(userId: string, source: CalendarSource) {
       allDay: e.allDay,
       attendees: e.attendees,
     }));
-  await replaceSourceEvents(userId, source.id, source.provider, events);
-  await sql`
-    update calendar_sources
-    set last_synced_at = now(), last_error = null
-    where id = ${source.id} and user_id = ${userId}
-  `;
-  return events.length;
+  return replaceSourceEvents(userId, source.id, source.provider, events);
 }
 
 export const listCalendar = createServerFn({ method: "GET" })
@@ -142,6 +115,7 @@ export const listCalendar = createServerFn({ method: "GET" })
     const events = await sql<Record<string, unknown>>`
       select * from calendar_events
       where user_id = ${context.userId}
+        and removed_at is null
         and starts_at >= ${from}
         and starts_at <= ${to}
       order by starts_at
@@ -198,39 +172,33 @@ export const connectProvider = createServerFn({ method: "POST" })
 
 export const syncCalendars = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .handler(async ({ context }) => {
+  .validator((input: { sourceId?: string } = {}) => input)
+  .handler(async ({ context, data }) => {
     const sql = await getSql();
     const sources = await sql<Record<string, unknown>>`
       select * from calendar_sources where user_id = ${context.userId} and enabled = true
+        and (${data.sourceId ?? null}::text is null or id = ${data.sourceId ?? null})
     `;
+    const outcomes: Array<{ sourceId: string; name: string; ok: boolean; eventCount?: number; error?: string }> = [];
     for (const row of sources) {
       const source = mapSource(row);
-      if (source.icsUrl) {
-        try {
-          await syncIcsSource(context.userId, source);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "Sync failed";
-          await sql`
-            update calendar_sources set last_error = ${msg}
-            where id = ${source.id} and user_id = ${context.userId}
-          `;
-        }
-        continue;
-      }
-      if (source.provider === "google" || source.provider === "outlook") {
-        try {
+      try {
+        let eventCount: number;
+        if (source.icsUrl) eventCount = await syncIcsSource(context.userId, source);
+        else if (source.provider === "google" || source.provider === "outlook") {
           const events = (await listOAuthEvents(context.userId, source))
             .map((event) => normalizeConnector(event as ConnectorEvent, source.provider))
-            .filter(Boolean);
-          await replaceSourceEvents(context.userId, source.id, source.provider, events);
-          await sql`update calendar_sources set last_synced_at = now(), last_error = null where id = ${source.id} and user_id = ${context.userId}`;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Sync failed";
-          await sql`update calendar_sources set last_error = ${message} where id = ${source.id} and user_id = ${context.userId}`;
-        }
+            .filter((event): event is NonNullable<typeof event> => event !== null);
+          eventCount = await replaceSourceEvents(context.userId, source.id, source.provider, events);
+        } else throw new Error("Unsupported calendar connection; reconnect in Settings.");
+        outcomes.push({ sourceId: source.id, name: source.name, ok: true, eventCount });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Sync failed; retry sync.";
+        await sql`update calendar_sources set last_error = ${message} where id = ${source.id} and user_id = ${context.userId}`;
+        outcomes.push({ sourceId: source.id, name: source.name, ok: false, error: message });
       }
     }
-    return { loginUrl: null };
+    return { outcomes };
   });
 
 export const removeSource = createServerFn({ method: "POST" })

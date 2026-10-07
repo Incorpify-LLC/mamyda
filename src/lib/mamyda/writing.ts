@@ -51,7 +51,7 @@ export const saveMinute = createServerFn({ method: "POST" })
     }
     const title = data.title.trim() || "Untitled minutes";
     if (data.id) {
-      await sql`
+      const updated = await sql`
         update minutes set
           title = ${title},
           body = ${data.body},
@@ -60,7 +60,9 @@ export const saveMinute = createServerFn({ method: "POST" })
           project_id = ${data.projectId ?? null},
           updated_at = now()
         where id = ${data.id} and user_id = ${context.userId}
+        returning id
       `;
+      if (!updated[0]) throw new Error("Minutes no longer exist. Copy your draft before reloading.");
       return data.id;
     }
     const id = nid();
@@ -172,7 +174,7 @@ export const saveNote = createServerFn({ method: "POST" })
         on conflict do nothing
       `;
     }
-    return notesWithTags(context.userId);
+    return { id, notes: await notesWithTags(context.userId) };
   });
 
 export const deleteNote = createServerFn({ method: "POST" })

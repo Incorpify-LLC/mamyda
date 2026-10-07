@@ -75,9 +75,12 @@ export function UserButton() {
           type="button"
           disabled={signingOut}
           onClick={() => {
-            setSigningOut(true);
-            // Success navigates away; on failure re-enable so it can be retried.
-            void signOut().catch(() => setSigningOut(false));
+            const proceed = () => {
+              setSigningOut(true);
+              void signOut().catch(() => setSigningOut(false));
+            };
+            const request = new CustomEvent("mamyda:request-sign-out", { cancelable: true, detail: proceed });
+            if (window.dispatchEvent(request)) proceed();
           }}
           className="cursor-pointer text-sm underline-offset-4 opacity-70 hover:underline disabled:cursor-wait disabled:no-underline"
         >

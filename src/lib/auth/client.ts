@@ -2,6 +2,7 @@ import { emailOTPClient, genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.mjs";
 import { GROK_PROVIDERS } from "./providers";
+import { clearWritingDrafts } from "@/lib/writing-draft-storage";
 
 /**
  * Better Auth client for this React SPA (browser-side).
@@ -230,6 +231,8 @@ export async function signOut(redirectTo = "/"): Promise<void> {
     },
     clearToken: () => setBearerToken(null),
     redirect: () => {
+      // Successful sign-out removes this tab's account-scoped writing drafts.
+      clearWritingDrafts();
       window.location.href = redirectTo;
     },
   });

@@ -2,6 +2,7 @@ import { APP_TZ, zonedDate } from "./time";
 
 export type ParsedEvent = {
   uid: string;
+  recurrenceId?: string | null;
   title: string;
   description: string;
   location: string;
@@ -76,6 +77,7 @@ export function parseIcs(ics: string): ParsedEvent[] {
   const events: ParsedEvent[] = [];
   for (const raw of blocks) {
     const block = raw.split(/END:VEVENT/i)[0] ?? raw;
+    if (field(block, "STATUS")?.toUpperCase() === "CANCELLED") continue;
     const dtstartLine = block.match(/^DTSTART([^:\n]*):([^\n]+)/im) ?? null;
     if (!dtstartLine?.[2]) continue;
     const start = parseIcsDate(dtstartLine[2], dtstartLine[1]);
@@ -92,6 +94,7 @@ export function parseIcs(ics: string): ParsedEvent[] {
       .filter(Boolean);
     events.push({
       uid,
+      recurrenceId: field(block, "RECURRENCE-ID"),
       title,
       description: field(block, "DESCRIPTION") ?? "",
       location: field(block, "LOCATION") ?? "",

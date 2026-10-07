@@ -59,6 +59,7 @@ export type CalendarSource = {
   enabled: boolean;
   lastSyncedAt: string | null;
   lastError: string | null;
+  lastImportedCount?: number | null;
 };
 
 export type CalendarEvent = {

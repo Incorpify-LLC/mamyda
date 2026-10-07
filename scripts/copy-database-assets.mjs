@@ -4,7 +4,9 @@ import { copyFile, access } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 const source = dirname(fileURLToPath(import.meta.resolve("@electric-sql/pglite")));
-const destination = ".vercel/output/functions/__server.func/_libs";
+const destination = process.env.NITRO_PRESET === "node_server"
+  ? ".output/server/_libs"
+  : ".vercel/output/functions/__server.func/_libs";
 await access(join(destination, "electric-sql__pglite.mjs"));
 for (const name of ["pglite.data", "pglite.wasm", "initdb.wasm"]) {
   await copyFile(join(source, name), join(destination, name));

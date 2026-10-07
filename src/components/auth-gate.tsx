@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { clearUnlockedKey } from "@/lib/vault-crypto";
+import { clearWritingDrafts } from "@/lib/writing-draft-storage";
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const { user, isPending } = useCurrentUserState();
@@ -14,6 +15,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (!isPending && activeIdentity !== identity) {
       queryClient.clear();
       clearUnlockedKey();
+      if (activeIdentity) clearWritingDrafts();
       setActiveIdentity(identity);
     }
   }, [identity, activeIdentity, isPending, queryClient]);

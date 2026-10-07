@@ -251,8 +251,6 @@ export async function listOAuthEvents(userId: string, source: CalendarSource): P
     url.searchParams.set("endDateTime", timeMax);
     url.searchParams.set("$top", "250");
   }
-  const response = await fetch(url, { headers: { authorization: `Bearer ${token}`, accept: "application/json", ...(provider === "outlook" ? { Prefer: 'outlook.timezone="UTC"' } : {}) }, signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) throw new Error(response.status === 401 ? "Calendar authorization expired; reconnect it in Settings" : `Calendar sync failed (${response.status})`);
-  const body = (await response.json()) as { items?: unknown[]; value?: unknown[] };
-  return body.items ?? body.value ?? [];
+  const { fetchCalendarPages } = await import("./calendar-pages.server");
+  return fetchCalendarPages(provider, url, token);
 }

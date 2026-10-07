@@ -106,6 +106,7 @@ export function mapSource(row: Record<string, unknown>): CalendarSource {
     icsUrl: str(row.ics_url),
     enabled: bool(row.enabled),
     lastSyncedAt: iso(row.last_synced_at),
+    lastImportedCount: row.last_imported_count == null ? null : Number(row.last_imported_count),
     lastError: str(row.last_error),
   };
 }

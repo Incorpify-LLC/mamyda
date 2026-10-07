@@ -12,6 +12,7 @@ import { formatDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Note } from "@/lib/mamyda/types";
+import { useWritingDraft } from "@/components/writing-draft";
 
 export const Route = createFileRoute("/_app/notes")({ component: NotesPage });
 
@@ -28,9 +29,7 @@ function NotesPage() {
     return [...set].sort();
   }, [list.data]);
 
-  const visible = (list.data ?? []).filter((n) =>
-    filter ? n.tags.includes(filter) : true,
-  );
+  const visible = (list.data ?? []).filter((n) => (filter ? n.tags.includes(filter) : true));
 
   const projectById = useMemo(
     () => new Map((ws.data?.projects ?? []).map((p) => [p.id, p])),
@@ -39,14 +38,38 @@ function NotesPage() {
 
   const liveTags = extractTags(current ? draft : "");
 
-  async function persist(id?: string, body?: string) {
+  async function persist() {
     const next = await saveNote({
-      data: { id, body: body ?? draft },
+      data: { id: current?.id || undefined, body: draft },
     });
-    list.refetch();
+    const saved = next.notes.find((n) => n.id === next.id);
+    if (!saved)
+      throw new Error("Could not identify the saved note. Reload your notes before retrying.");
+    setCurrent(saved);
+    setDraft(saved.body);
+    void list.refetch();
     toast.success("Note saved");
-    return next;
   }
+  const protection = useWritingDraft({
+    kind: "notes",
+    value: { id: current?.id ?? "", body: draft },
+    baseline: { id: current?.id ?? "", body: current?.body ?? "" },
+    persist,
+    restore: (value, baseline) => {
+      const saved = (list.data ?? []).find((n) => n.id === value.id);
+      setCurrent({
+        id: value.id,
+        projectId: null,
+        title: "",
+        tags: [],
+        createdAt: "",
+        updatedAt: "",
+        ...saved,
+        body: baseline.body,
+      });
+      setDraft(value.body);
+    },
+  });
 
   return (
     <AppShell
@@ -54,23 +77,27 @@ function NotesPage() {
       action={
         <Button
           size="sm"
-          onClick={() => {
-            setCurrent({
-              id: "",
-              projectId: null,
-              title: "",
-              body: "",
-              tags: [],
-              createdAt: "",
-              updatedAt: "",
-            });
-            setDraft("");
-          }}
+          disabled={protection.saving || protection.recoveryPending}
+          onClick={() =>
+            protection.request(() => {
+              setCurrent({
+                id: "",
+                projectId: null,
+                title: "",
+                body: "",
+                tags: [],
+                createdAt: "",
+                updatedAt: "",
+              });
+              setDraft("");
+            })
+          }
         >
           New
         </Button>
       }
     >
+      {protection.dialog}
       <p className="mb-4 text-sm text-muted-foreground">
         Tag with #project-slug to attach a note to a project. Free tags work too.
       </p>
@@ -106,15 +133,16 @@ function NotesPage() {
             <button
               key={n.id}
               type="button"
-              onClick={() => {
-                setCurrent(n);
-                setDraft(n.body);
-              }}
+              disabled={protection.saving || protection.recoveryPending}
+              onClick={() =>
+                protection.request(() => {
+                  setCurrent(n);
+                  setDraft(n.body);
+                })
+              }
               className={cn(
                 "w-full rounded-lg border px-3 py-2 text-left",
-                current?.id === n.id
-                  ? "border-primary bg-card"
-                  : "border-border bg-card/60",
+                current?.id === n.id ? "border-primary bg-card" : "border-border bg-card/60",
               )}
             >
               <p className="text-sm font-medium">{n.title}</p>
@@ -129,6 +157,8 @@ function NotesPage() {
         {current ? (
           <Card className="p-5">
             <Textarea
+              aria-label="Note body"
+              disabled={protection.saving || protection.recoveryPending}
               className="min-h-72 font-sans"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -136,30 +166,42 @@ function NotesPage() {
             />
             <div className="mt-3 flex flex-wrap gap-1.5">
               {liveTags.map((t) => (
-                <Badge key={t} tone={projectById.has(t) || [...projectById.values()].some((p) => p.slug === t) ? "primary" : "muted"}>
+                <Badge
+                  key={t}
+                  tone={
+                    projectById.has(t) || [...projectById.values()].some((p) => p.slug === t)
+                      ? "primary"
+                      : "muted"
+                  }
+                >
                   #{t}
                 </Badge>
               ))}
             </div>
             <div className="mt-4 flex gap-2">
               <Button
-                onClick={async () => {
-                  const notes = await persist(current.id || undefined, draft);
-                  const saved =
-                    notes.find((n) => n.body === draft) ?? notes[0] ?? current;
-                  setCurrent(saved);
-                  setDraft(saved.body);
-                }}
+                disabled={protection.saving || protection.recoveryPending}
+                onClick={() => void protection.save()}
               >
-                Save
+                {protection.saving ? "Saving…" : "Save"}
               </Button>
               {current.id && (
                 <Button
                   variant="ghost"
+                  disabled={protection.saving || protection.recoveryPending}
                   onClick={async () => {
-                    await deleteNote({ data: current.id });
-                    setCurrent(null);
-                    await list.refetch();
+                    if (!window.confirm("Delete this note and any unsaved changes?")) return;
+                    try {
+                      await deleteNote({ data: current.id });
+                      protection.clear();
+                      setCurrent(null);
+                      setDraft("");
+                      await list.refetch();
+                    } catch (e) {
+                      toast.error(
+                        e instanceof Error ? e.message : "Delete failed; your note was kept.",
+                      );
+                    }
                   }}
                 >
                   Delete

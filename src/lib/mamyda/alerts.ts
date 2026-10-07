@@ -119,6 +119,7 @@ export const runAlerts = createServerFn({ method: "POST" })
       const meetings = await sql<{ id: string; title: string; starts_at: string }>`
         select id, title, starts_at from calendar_events
         where user_id = ${context.userId}
+          and removed_at is null
           and starts_at >= ${now.toISOString()}
           and starts_at <= ${in30.toISOString()}
       `;
