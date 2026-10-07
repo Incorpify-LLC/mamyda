@@ -13,7 +13,10 @@ async function signInWithCode(email, name) {
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByRole("button", { name: "Email me a code" }).click();
   const sink = await fetch(`${base}/api/otp-sink?email=${encodeURIComponent(email)}`);
-  if (!sink.ok) throw new Error("OTP sink missing. Start the server with OTP_SINK=1 and without Turnstile keys.");
+  if (!sink.ok)
+    throw new Error(
+      "OTP sink missing. Start the server with OTP_SINK=1 and without Turnstile keys.",
+    );
   const { otp } = await sink.json();
   await page.getByLabel("Code", { exact: true }).fill(otp);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
@@ -29,16 +32,24 @@ try {
     await page.screenshot({ path: `screenshots/e2e-${route.slice(1) || "today"}.png` });
   }
   await page.goto(base + "/board");
-  await page.getByRole("button", { name: "Client", exact: true }).click();
+  await page.getByRole("button", { name: "New client", exact: true }).click();
   await page.getByLabel("Name", { exact: true }).fill("QA Client");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await page.getByRole("button", { name: "QA Client", exact: true }).waitFor();
-  await page.getByRole("button", { name: "Project", exact: true }).click();
+  await page.getByLabel("Select client").selectOption({ label: "QA Client" });
+  await page.getByRole("button", { name: "New project", exact: true }).click();
   await page.getByLabel("Name", { exact: true }).fill("QA Project");
   await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByLabel("Select project").selectOption({ label: "QA Project" });
   await page.getByRole("button", { name: "Add task", exact: true }).first().click();
   await page.getByLabel("Title", { exact: true }).fill("QA Task");
   await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByText("QA Task", { exact: true }).waitFor();
+  const taskTrigger = page.getByRole("button", { name: "Open task QA Task", exact: true });
+  await taskTrigger.focus();
+  await taskTrigger.press("Enter");
+  await page.getByRole("heading", { name: "Task", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Move QA Task to status").selectOption("doing");
   await page.getByText("QA Task", { exact: true }).waitFor();
   await page.reload();
   await page.getByText("QA Task", { exact: true }).waitFor();
@@ -61,7 +72,7 @@ try {
   await page.getByText("Alert preferences saved", { exact: true }).waitFor();
   await page.getByLabel("Your inbox").fill("");
   await Promise.all([
-    page.waitForResponse(response => response.request().method() === "POST" && response.ok()),
+    page.waitForResponse((response) => response.request().method() === "POST" && response.ok()),
     page.getByRole("button", { name: "Save", exact: true }).click(),
   ]);
   await page.reload();
@@ -76,6 +87,7 @@ try {
   for (const viewport of [
     { width: 1280, height: 800 },
     { width: 390, height: 844 },
+    { width: 320, height: 800 },
   ]) {
     await page.setViewportSize(viewport);
     await page.goto(base + "/board");

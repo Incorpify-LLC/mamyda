@@ -1,15 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { AppShell, colorDot } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -53,12 +49,8 @@ function BoardPage() {
   const projects = ws.data?.projects ?? [];
   const tasks = ws.data?.tasks ?? [];
 
-  const selectedClient = clientId
-    ? clients.find((c) => c.id === clientId)
-    : clients[0];
-  const clientProjects = projects.filter(
-    (p) => p.clientId === selectedClient?.id,
-  );
+  const selectedClient = clientId ? clients.find((c) => c.id === clientId) : clients[0];
+  const clientProjects = projects.filter((p) => p.clientId === selectedClient?.id);
   const selectedProject = projectId
     ? (clientProjects.find((p) => p.id === projectId) ?? clientProjects[0])
     : clientProjects[0];
@@ -72,103 +64,126 @@ function BoardPage() {
     <AppShell
       title="Board"
       action={
-        <div className="flex gap-2">
+        selectedProject ? (
           <Button
-            variant="outline"
             size="sm"
-            onClick={() => {
-              setEditingClient(false);
-              setClientOpen(true);
-            }}
+            onClick={() =>
+              setTask({
+                projectId: selectedProject.id,
+                columnId: "backlog",
+                priority: "normal",
+                title: "",
+              })
+            }
           >
-            New client
+            <Plus className="size-4" aria-hidden="true" />
+            <span className="hidden min-[380px]:inline">Add task</span>
+            <span className="min-[380px]:hidden">Task</span>
           </Button>
+        ) : undefined
+      }
+    >
+      <div className="mb-4 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <Label className="mb-1 block text-xs text-muted-foreground" htmlFor="board-client">
+              Client
+            </Label>
+            <select
+              id="board-client"
+              aria-label="Select client"
+              className="h-10 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm"
+              value={selectedClient?.id ?? ""}
+              onChange={(event) => {
+                setClientId(event.target.value || null);
+                setProjectId(null);
+              }}
+            >
+              {clients.length === 0 && <option value="">No clients yet</option>}
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))}
+            </select>
+          </div>
           {selectedClient && (
             <Button
-              variant="ghost"
-              size="sm"
+              variant="outline"
+              size="icon"
+              aria-label={`Edit client ${selectedClient.name}`}
+              title={`Edit ${selectedClient.name}`}
               onClick={() => {
                 setEditingClient(true);
                 setClientOpen(true);
               }}
             >
-              <Pencil className="size-3.5" aria-hidden="true" />
-              Edit client
+              <Pencil className="size-4" />
             </Button>
           )}
           <Button
-            variant="outline"
-            size="sm"
-            disabled={!selectedClient}
+            variant="ghost"
+            size="icon"
+            aria-label="New client"
+            title="New client"
             onClick={() => {
-              setEditingProject(false);
-              setProjectOpen(true);
+              setEditingClient(false);
+              setClientOpen(true);
             }}
           >
-            New project
+            <Plus className="size-4" />
           </Button>
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <Label className="mb-1 block text-xs text-muted-foreground" htmlFor="board-project">
+              Project
+            </Label>
+            <select
+              id="board-project"
+              aria-label="Select project"
+              className="h-10 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm"
+              value={selectedProject?.id ?? ""}
+              disabled={!selectedClient}
+              onChange={(event) => setProjectId(event.target.value || null)}
+            >
+              {clientProjects.length === 0 && <option value="">No projects yet</option>}
+              {clientProjects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </div>
           {selectedProject && (
             <Button
-              variant="ghost"
-              size="sm"
+              variant="outline"
+              size="icon"
+              aria-label={`Edit project ${selectedProject.name}`}
+              title={`Edit ${selectedProject.name}`}
               onClick={() => {
                 setEditingProject(true);
                 setProjectOpen(true);
               }}
             >
-              <Pencil className="size-3.5" aria-hidden="true" />
-              Edit project
+              <Pencil className="size-4" />
             </Button>
           )}
-        </div>
-      }
-    >
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-4 md:mx-0 md:px-0">
-        {clients.map((c) => (
-          <button
-            key={c.id}
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={!selectedClient}
+            aria-label="New project"
+            title="New project"
             onClick={() => {
-              setClientId(c.id);
-              setProjectId(null);
+              setEditingProject(false);
+              setProjectOpen(true);
             }}
-            className={cn(
-              "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm whitespace-nowrap",
-              selectedClient?.id === c.id
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card",
-            )}
           >
-            <span className={cn("size-2 rounded-full", colorDot(c.color))} />
-            {c.name}
-          </button>
-        ))}
-      </div>
-
-      {selectedClient && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {clientProjects.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setProjectId(p.id)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-sm",
-                selectedProject?.id === p.id
-                  ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground",
-              )}
-            >
-              {p.name}
-            </button>
-          ))}
-          {selectedProject && (
-            <span className="text-xs text-muted-foreground">
-              #{selectedProject.slug}
-            </span>
-          )}
+            <Plus className="size-4" />
+          </Button>
         </div>
-      )}
+      </div>
 
       {selectedProject ? (
         <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-6 md:mx-0 md:px-0">
@@ -201,27 +216,60 @@ function BoardPage() {
                     <Card
                       key={t.id}
                       draggable
-                      onDragStart={(e) =>
-                        e.dataTransfer.setData("text/task-id", t.id)
-                      }
-                      onClick={() => setTask(t)}
+                      onDragStart={(e) => e.dataTransfer.setData("text/task-id", t.id)}
                       className="cursor-grab p-3 active:cursor-grabbing"
                     >
-                      <p className="text-sm font-medium">{t.title}</p>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        <Badge tone={priorityTone(t.priority)}>{t.priority}</Badge>
-                        {t.dueAt && (
-                          <Badge
-                            tone={
-                              new Date(t.dueAt) < new Date() && t.columnId !== "done"
-                                ? "danger"
-                                : "muted"
-                            }
-                          >
-                            {formatDay(t.dueAt)}
-                          </Badge>
-                        )}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTask(t)}
+                        className="block w-full rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={`Open task ${t.title}`}
+                      >
+                        <p className="text-sm font-medium">{t.title}</p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <Badge tone={priorityTone(t.priority)}>{t.priority}</Badge>
+                          {t.dueAt && (
+                            <Badge
+                              tone={
+                                new Date(t.dueAt) < new Date() && t.columnId !== "done"
+                                  ? "danger"
+                                  : "muted"
+                              }
+                            >
+                              {formatDay(t.dueAt)}
+                            </Badge>
+                          )}
+                        </div>
+                      </button>
+                      <label
+                        className="mt-3 block text-xs text-muted-foreground"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        Move to
+                        <select
+                          aria-label={`Move ${t.title} to status`}
+                          value={t.columnId}
+                          className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={async (event) => {
+                            event.stopPropagation();
+                            await moveTask({
+                              data: {
+                                id: t.id,
+                                columnId: event.target.value,
+                                position: Date.now(),
+                              },
+                            });
+                            await refresh();
+                          }}
+                        >
+                          {TASK_COLUMNS.map((column) => (
+                            <option key={column.id} value={column.id}>
+                              {column.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                     </Card>
                   ))}
                   <button
@@ -294,9 +342,9 @@ function ClientDialog({
   useEffect(() => {
     if (!open) return;
     setCreating(!editing);
-    setName(editing ? client?.name ?? "" : "");
-    setEmail(editing ? client?.email ?? "" : "");
-    setColor(editing ? client?.color ?? "sage" : "sage");
+    setName(editing ? (client?.name ?? "") : "");
+    setEmail(editing ? (client?.email ?? "") : "");
+    setColor(editing ? (client?.color ?? "sage") : "sage");
   }, [client, editing, open]);
 
   return (
@@ -325,20 +373,11 @@ function ClientDialog({
         >
           <div className="space-y-1.5">
             <Label htmlFor="cname">Name</Label>
-            <Input
-              id="cname"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+            <Input id="cname" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cemail">Email</Label>
-            <Input
-              id="cemail"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <Input id="cemail" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="flex gap-2">
             {CLIENT_COLORS.map((c) => (
@@ -407,8 +446,8 @@ function ProjectDialog({
   useEffect(() => {
     if (!open) return;
     setCreating(!editing);
-    setName(editing ? project?.name ?? "" : "");
-    setDescription(editing ? project?.description ?? "" : "");
+    setName(editing ? (project?.name ?? "") : "");
+    setDescription(editing ? (project?.description ?? "") : "");
   }, [editing, open, project]);
 
   return (
@@ -438,12 +477,7 @@ function ProjectDialog({
         >
           <div className="space-y-1.5">
             <Label htmlFor="pname">Name</Label>
-            <Input
-              id="pname"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+            <Input id="pname" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="pdesc">Description</Label>
@@ -543,20 +577,11 @@ function TaskDialog({
         >
           <div className="space-y-1.5">
             <Label htmlFor="ttitle">Title</Label>
-            <Input
-              id="ttitle"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-            />
+            <Input id="ttitle" value={title} onChange={(e) => setTitle(e.target.value)} required />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="tnotes">Notes</Label>
-            <Textarea
-              id="tnotes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
+            <Textarea id="tnotes" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -639,7 +664,8 @@ function ClientFiles({ clientId }: { clientId: string }) {
     <Card className="mb-4 p-4">
       <h2 className="text-sm font-medium">Client files</h2>
       <p className="mt-1 text-xs text-muted-foreground">
-        Stored in the file bucket, not in the database. Up to 8 MB. PDF, images, text, and Office documents.
+        Stored in the file bucket, not in the database. Up to 8 MB. PDF, images, text, and Office
+        documents.
       </p>
       <label className="mt-3 inline-flex cursor-pointer text-sm underline-offset-4 hover:underline">
         Upload
@@ -658,7 +684,12 @@ function ClientFiles({ clientId }: { clientId: string }) {
             });
             try {
               await uploadClientFile({
-                data: { clientId, name: file.name, contentType: file.type || "application/octet-stream", base64 },
+                data: {
+                  clientId,
+                  name: file.name,
+                  contentType: file.type || "application/octet-stream",
+                  base64,
+                },
               });
               setNote(null);
               await refresh();
@@ -672,7 +703,10 @@ function ClientFiles({ clientId }: { clientId: string }) {
       <ul className="mt-3 space-y-1">
         {files.map((file) => (
           <li key={file.id} className="flex items-center justify-between gap-2 text-sm">
-            <a className="truncate underline-offset-4 hover:underline" href={`/api/files/${file.id}`}>
+            <a
+              className="truncate underline-offset-4 hover:underline"
+              href={`/api/files/${file.id}`}
+            >
               {file.name}
             </a>
             <button

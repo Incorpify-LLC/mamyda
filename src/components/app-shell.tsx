@@ -27,13 +27,7 @@ const NAV = [
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
-function NavLinks({
-  onNavigate,
-  compact,
-}: {
-  onNavigate?: () => void;
-  compact?: boolean;
-}) {
+function NavLinks({ onNavigate, compact }: { onNavigate?: () => void; compact?: boolean }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
     <nav className={cn("flex", compact ? "flex-row gap-1" : "flex-col gap-1")}>
@@ -76,10 +70,13 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const [dark, setDark] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
     const saved = window.localStorage.getItem("mamyda-theme");
-    const next = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = saved
+      ? saved === "dark"
+      : window.matchMedia("(prefers-color-scheme: dark)").matches;
     setDark(next);
     document.documentElement.classList.toggle("dark", next);
   }, []);
@@ -105,7 +102,7 @@ export function AppShell({
       </aside>
 
       <div className="md:pl-56">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-background/90 px-4 py-3 backdrop-blur md:px-8">
+        <header className="sticky top-0 z-30 flex min-w-0 flex-wrap items-center gap-2 border-b border-border bg-background/90 px-3 py-3 backdrop-blur sm:gap-3 sm:px-4 md:flex-nowrap md:px-8">
           <Button
             variant="ghost"
             size="icon"
@@ -115,10 +112,10 @@ export function AppShell({
           >
             <Menu className="size-5" />
           </Button>
-          <h1 className="font-display text-xl tracking-tight md:text-2xl">
+          <h1 className="min-w-0 max-w-[40vw] truncate font-display text-xl tracking-tight md:max-w-none md:text-2xl">
             {title}
           </h1>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             {action}
             <Button
               variant="ghost"
@@ -134,16 +131,27 @@ export function AppShell({
         <div className="px-4 py-5 pb-24 md:px-8 md:pb-10">{children}</div>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-border bg-card/95 px-1 py-1 md:hidden">
+      <nav
+        aria-label="Primary navigation"
+        className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-border bg-card/95 px-1 py-1 md:hidden"
+      >
         {NAV.slice(0, 5).map((item) => {
           const Icon = item.icon;
+          const active =
+            item.to === "/"
+              ? pathname === "/"
+              : pathname === item.to || pathname.startsWith(`${item.to}/`);
           return (
             <Link
               key={item.to}
               to={item.to}
-              className="flex min-w-12 flex-col items-center gap-0.5 px-2 py-1.5 text-[10px] font-medium text-muted-foreground"
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex min-w-12 flex-col items-center gap-0.5 rounded-md px-2 py-1.5 text-[10px] font-medium transition-colors",
+                active ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+              )}
             >
-              <Icon className="size-4" />
+              <Icon className="size-4" aria-hidden="true" />
               {item.label}
             </Link>
           );
