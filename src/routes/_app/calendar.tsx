@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,17 +10,61 @@ import { useWorkspace } from "@/lib/mamyda/hooks";
 import { syncCalendars } from "@/lib/mamyda/calendar";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { TurnstileField, type TurnstileStatus } from "@/components/turnstile-field";
+import { createCalendarEvent, updateCalendarEvent } from "@/lib/mamyda/calendar";
+import type { CalendarEvent } from "@/lib/mamyda/types";
 
-export const Route = createFileRoute("/_app/calendar")({ component: CalendarPage });
+export const Route = createFileRoute("/_app/calendar")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...(typeof search.eventId === "string" ? { eventId: search.eventId } : {}),
+  }),
+  component: CalendarPage,
+});
 
 function CalendarPage() {
+  const search = Route.useSearch();
   const cal = useCalendar();
   const ws = useWorkspace();
   const [cursor, setCursor] = useState(() => startOfDay(new Date()));
   const [syncing, setSyncing] = useState(false);
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState("");
+  const [editor, setEditor] = useState<{
+    eventId?: string;
+    sourceId: string;
+    title: string;
+    description: string;
+    location: string;
+    startsAt: string;
+    endsAt: string;
+    allDay: boolean;
+    projectId: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaStatus, setCaptchaStatus] = useState<TurnstileStatus>("unavailable");
+  const [captchaKey, setCaptchaKey] = useState(0);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(cursor, i)), [cursor]);
+
+  useEffect(() => {
+    if (!search.eventId || !cal.data) return;
+    const event = cal.data.events.find((item) => item.id === search.eventId);
+    if (!event) return;
+    const eventDay = startOfDay(new Date(event.startsAt));
+    if (formatDayKey(cursor) !== formatDayKey(eventDay)) {
+      setCursor(eventDay);
+      return;
+    }
+    requestAnimationFrame(() =>
+      document
+        .getElementById(`calendar-event-${event.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+    );
+  }, [search.eventId, cal.data, cursor]);
 
   const grouped = useMemo(() => {
     const events = cal.data?.events ?? [];
@@ -35,6 +79,113 @@ function CalendarPage() {
   }, [cal.data]);
 
   const projectName = (id: string | null) => ws.data?.projects.find((p) => p.id === id)?.name;
+  const writableSources = (cal.data?.sources ?? []).filter(
+    (source) =>
+      source.enabled &&
+      !source.icsUrl &&
+      (source.provider === "google" || source.provider === "outlook"),
+  );
+
+  function localDateTime(value: string) {
+    const date = new Date(value);
+    const pad = (part: number) => String(part).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function editEvent(event: CalendarEvent) {
+    if (!event.sourceId || !writableSources.some((source) => source.id === event.sourceId)) {
+      toast.error("Events from subscription feeds are read-only.");
+      return;
+    }
+    setCaptchaToken("");
+    setCaptchaStatus("loading");
+    setCaptchaKey((value) => value + 1);
+    setEditor({
+      eventId: event.id,
+      sourceId: event.sourceId,
+      title: event.title,
+      description: event.description ?? "",
+      location: event.location ?? "",
+      startsAt: event.allDay
+        ? `${event.startsAt.slice(0, 10)}T00:00`
+        : localDateTime(event.startsAt),
+      endsAt: event.allDay
+        ? `${(event.endsAt ?? event.startsAt).slice(0, 10)}T00:00`
+        : localDateTime(event.endsAt ?? event.startsAt),
+      allDay: event.allDay,
+      projectId: event.projectId ?? "",
+    });
+  }
+
+  function newEvent() {
+    if (!writableSources.length) {
+      toast.error("Connect Google or Microsoft Calendar in Settings to create events.");
+      return;
+    }
+    const start = new Date();
+    start.setMinutes(0, 0, 0);
+    start.setHours(start.getHours() + 1);
+    const end = new Date(start.getTime() + 60 * 60_000);
+    setCaptchaToken("");
+    setCaptchaStatus("loading");
+    setCaptchaKey((value) => value + 1);
+    setEditor({
+      sourceId: writableSources[0]!.id,
+      title: "",
+      description: "",
+      location: "",
+      startsAt: localDateTime(start.toISOString()),
+      endsAt: localDateTime(end.toISOString()),
+      allDay: false,
+      projectId: "",
+    });
+  }
+
+  async function saveEvent() {
+    if (!editor || saving) return;
+    if (!captchaToken || captchaStatus !== "verified") {
+      toast.error("Complete the security check before saving.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const toIso = (value: string) =>
+        editor.allDay ? value.slice(0, 10) : new Date(value).toISOString();
+      const data = {
+        sourceId: editor.sourceId,
+        eventId: editor.eventId,
+        title: editor.title,
+        description: editor.description,
+        location: editor.location,
+        startsAt: toIso(editor.startsAt),
+        endsAt: toIso(editor.endsAt),
+        allDay: editor.allDay,
+        projectId: editor.projectId || null,
+      };
+      if (editor.eventId) {
+        await updateCalendarEvent({
+          data: { ...data, eventId: editor.eventId },
+          headers: { "x-turnstile-response": captchaToken },
+        });
+      } else {
+        await createCalendarEvent({ data, headers: { "x-turnstile-response": captchaToken } });
+      }
+      await cal.refetch();
+      setEditor(null);
+      toast.success(editor.eventId ? "Calendar event updated" : "Event added to your calendar");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not save the event. Your details are still here; retry.",
+      );
+      setCaptchaToken("");
+      setCaptchaStatus("loading");
+      setCaptchaKey((value) => value + 1);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function onSync(sourceId?: string) {
     if (syncing) return;
@@ -80,9 +231,14 @@ function CalendarPage() {
     <AppShell
       title="Calendar"
       action={
-        <Button variant="outline" size="sm" onClick={() => void onSync()} disabled={syncing}>
-          {syncing ? "Syncing…" : "Sync"}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={newEvent}>
+            New event
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void onSync()} disabled={syncing}>
+            {syncing ? "Syncing…" : "Sync"}
+          </Button>
+        </div>
       }
     >
       {cal.isError ? (
@@ -200,7 +356,11 @@ function CalendarPage() {
                   ) : (
                     <div className="space-y-2">
                       {events.map((ev) => (
-                        <Card key={ev.id} className="flex items-start gap-4 p-4">
+                        <Card
+                          key={ev.id}
+                          id={`calendar-event-${ev.id}`}
+                          className="flex items-start gap-4 p-4"
+                        >
                           <div className="w-20 shrink-0 text-sm tabular-nums text-muted-foreground">
                             {ev.allDay ? "All day" : formatTime(ev.startsAt)}
                             {ev.endsAt && !ev.allDay ? <div>{formatTime(ev.endsAt)}</div> : null}
@@ -211,9 +371,24 @@ function CalendarPage() {
                               {[ev.location, projectName(ev.projectId)].filter(Boolean).join(" · ")}
                             </p>
                           </div>
-                          <Badge tone={ev.isSample ? "muted" : "primary"}>
-                            {ev.sourceProvider}
-                          </Badge>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <Badge tone={ev.isSample ? "muted" : "primary"}>
+                              {ev.sourceProvider}
+                            </Badge>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={
+                                !writableSources.some((source) => source.id === ev.sourceId)
+                              }
+                              title={
+                                ev.sourceId ? "Edit event in connected calendar" : "Sample event"
+                              }
+                              onClick={() => editEvent(ev)}
+                            >
+                              Edit
+                            </Button>
+                          </div>
                         </Card>
                       ))}
                     </div>
@@ -224,6 +399,164 @@ function CalendarPage() {
           </div>
         </>
       )}
+      <Dialog
+        open={Boolean(editor)}
+        onOpenChange={(open) => {
+          if (!open && !saving) setEditor(null);
+        }}
+      >
+        {editor && (
+          <DialogContent className="max-h-[90dvh] overflow-y-auto">
+            <DialogTitle>
+              {editor.eventId ? "Edit calendar event" : "New calendar event"}
+            </DialogTitle>
+            <DialogDescription>
+              Changes are saved directly to the selected calendar.
+            </DialogDescription>
+            <div className="mt-4 space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="calendar-event-title">Title</Label>
+                <Input
+                  id="calendar-event-title"
+                  autoFocus
+                  required
+                  maxLength={200}
+                  value={editor.title}
+                  onChange={(e) => setEditor({ ...editor, title: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="calendar-event-source">Save to</Label>
+                <select
+                  id="calendar-event-source"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={editor.sourceId}
+                  disabled={Boolean(editor.eventId)}
+                  onChange={(e) => setEditor({ ...editor, sourceId: e.target.value })}
+                >
+                  {writableSources.map((source) => (
+                    <option key={source.id} value={source.id}>
+                      {source.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editor.allDay}
+                  onChange={(e) => {
+                    const allDay = e.target.checked;
+                    let endsAt = editor.endsAt;
+                    if (allDay && editor.startsAt.slice(0, 10) === editor.endsAt.slice(0, 10)) {
+                      const nextDay = new Date(`${editor.startsAt.slice(0, 10)}T00:00:00Z`);
+                      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+                      endsAt = `${nextDay.toISOString().slice(0, 10)}T00:00`;
+                    }
+                    setEditor({
+                      ...editor,
+                      allDay,
+                      startsAt: allDay ? `${editor.startsAt.slice(0, 10)}T00:00` : editor.startsAt,
+                      endsAt: allDay ? endsAt : editor.endsAt,
+                    });
+                  }}
+                />{" "}
+                All day
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="calendar-event-start">Starts</Label>
+                  <Input
+                    id="calendar-event-start"
+                    type={editor.allDay ? "date" : "datetime-local"}
+                    value={editor.allDay ? editor.startsAt.slice(0, 10) : editor.startsAt}
+                    onChange={(e) =>
+                      setEditor({
+                        ...editor,
+                        startsAt: editor.allDay ? `${e.target.value}T00:00` : e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="calendar-event-end">Ends</Label>
+                  <Input
+                    id="calendar-event-end"
+                    type={editor.allDay ? "date" : "datetime-local"}
+                    value={editor.allDay ? editor.endsAt.slice(0, 10) : editor.endsAt}
+                    onChange={(e) =>
+                      setEditor({
+                        ...editor,
+                        endsAt: editor.allDay ? `${e.target.value}T00:00` : e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="calendar-event-location">Location</Label>
+                <Input
+                  id="calendar-event-location"
+                  maxLength={500}
+                  value={editor.location}
+                  onChange={(e) => setEditor({ ...editor, location: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="calendar-event-project">Project (optional)</Label>
+                <select
+                  id="calendar-event-project"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={editor.projectId}
+                  onChange={(e) => setEditor({ ...editor, projectId: e.target.value })}
+                >
+                  <option value="">No project</option>
+                  {(ws.data?.projects ?? [])
+                    .filter((project) => !project.archived)
+                    .map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="calendar-event-description">Description</Label>
+                <Textarea
+                  id="calendar-event-description"
+                  maxLength={8000}
+                  value={editor.description}
+                  onChange={(e) => setEditor({ ...editor, description: e.target.value })}
+                />
+              </div>
+              <TurnstileField
+                action="calendar-event-write"
+                resetKey={captchaKey}
+                onToken={setCaptchaToken}
+                onStatus={setCaptchaStatus}
+              />
+              <p className="text-xs text-muted-foreground">
+                Times use your device’s local timezone. Subscription (ICS) calendars are read-only.
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" disabled={saving} onClick={() => setEditor(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={
+                    saving || captchaStatus !== "verified" || !captchaToken || !editor.title.trim()
+                  }
+                  onClick={() => void saveEvent()}
+                >
+                  {saving ? "Saving…" : "Save event"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
     </AppShell>
   );
 }

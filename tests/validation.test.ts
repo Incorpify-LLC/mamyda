@@ -1,5 +1,11 @@
 import { expect, test } from "vitest";
-import { taskInput, noteInput, moveInput, profileInput } from "@/lib/mamyda/validation";
+import {
+  taskInput,
+  noteInput,
+  moveInput,
+  profileInput,
+  calendarEventWriteInput,
+} from "@/lib/mamyda/validation";
 test("task input rejects malformed dates, columns, priorities and oversized payloads", () => {
   for (const extra of [
     { dueAt: "yesterday" },
@@ -27,4 +33,21 @@ test("valid clearing and partial updates are retained", () => {
   expect(
     taskInput.parse({ projectId: "p", title: "Task", dueAt: "2026-09-10T18:00:00+05:30" }).dueAt,
   ).toContain("+05:30");
+});
+test("calendar event writes reject missing titles and unbounded text fields", () => {
+  const event = {
+    sourceId: "source",
+    title: "Planning",
+    description: "",
+    location: "",
+    startsAt: "2026-10-07T09:00:00.000Z",
+    endsAt: "2026-10-07T10:00:00.000Z",
+    allDay: false,
+  };
+  expect(calendarEventWriteInput.safeParse(event).success).toBe(true);
+  expect(calendarEventWriteInput.safeParse({ ...event, title: " " }).success).toBe(false);
+  expect(
+    calendarEventWriteInput.safeParse({ ...event, description: "x".repeat(8001) }).success,
+  ).toBe(false);
+  expect(calendarEventWriteInput.safeParse({ ...event, allDay: "yes" }).success).toBe(false);
 });

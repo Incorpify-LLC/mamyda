@@ -32,7 +32,8 @@ const providers = {
   },
   outlook: {
     authorize: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-    token: () => `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID?.trim() || "common"}/oauth2/v2.0/token`,
+    token: () =>
+      `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID?.trim() || "common"}/oauth2/v2.0/token`,
     clientId: () => process.env.MICROSOFT_CALENDAR_CLIENT_ID?.trim(),
     clientSecret: () => process.env.MICROSOFT_CALENDAR_CLIENT_SECRET?.trim(),
     scope: "openid profile email offline_access User.Read Calendars.ReadWrite",
@@ -61,7 +62,9 @@ function configured(provider: OAuthProvider): { clientId: string; clientSecret: 
   const clientId = item.clientId();
   const clientSecret = item.clientSecret();
   if (!clientId || !clientSecret) {
-    throw new Error(`${provider === "google" ? "Google" : "Microsoft"} Calendar is not configured yet`);
+    throw new Error(
+      `${provider === "google" ? "Google" : "Microsoft"} Calendar is not configured yet`,
+    );
   }
   return { clientId, clientSecret };
 }
@@ -75,8 +78,10 @@ function digest(input: string): string {
 }
 
 function encryptionKey(): Buffer {
-  const material = process.env.CALENDAR_TOKEN_ENCRYPTION_KEY?.trim() || process.env.BETTER_AUTH_SECRET?.trim();
-  if (!material || material.length < 32) throw new Error("Calendar token encryption is not configured");
+  const material =
+    process.env.CALENDAR_TOKEN_ENCRYPTION_KEY?.trim() || process.env.BETTER_AUTH_SECRET?.trim();
+  if (!material || material.length < 32)
+    throw new Error("Calendar token encryption is not configured");
   return createHash("sha256").update(material).digest();
 }
 
@@ -89,10 +94,18 @@ function encrypt(value: string): string {
 
 function decrypt(value: string): string {
   const [version, ivText, tagText, payloadText] = value.split(".");
-  if (version !== "v1" || !ivText || !tagText || !payloadText) throw new Error("Stored calendar authorization is invalid");
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(ivText, "base64url"));
+  if (version !== "v1" || !ivText || !tagText || !payloadText)
+    throw new Error("Stored calendar authorization is invalid");
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    encryptionKey(),
+    Buffer.from(ivText, "base64url"),
+  );
   decipher.setAuthTag(Buffer.from(tagText, "base64url"));
-  return Buffer.concat([decipher.update(Buffer.from(payloadText, "base64url")), decipher.final()]).toString("utf8");
+  return Buffer.concat([
+    decipher.update(Buffer.from(payloadText, "base64url")),
+    decipher.final(),
+  ]).toString("utf8");
 }
 
 function errorRedirect(provider: OAuthProvider, message: string): Response {
@@ -127,9 +140,16 @@ export async function beginCalendarOAuth(userId: string, provider: OAuthProvider
   return url.toString();
 }
 
-async function exchangeCode(provider: OAuthProvider, code: string, verifier: string): Promise<TokenResponse> {
+async function exchangeCode(
+  provider: OAuthProvider,
+  code: string,
+  verifier: string,
+): Promise<TokenResponse> {
   const { clientId, clientSecret } = configured(provider);
-  const tokenUrl = typeof providers[provider].token === "function" ? providers[provider].token() : providers[provider].token;
+  const tokenUrl =
+    typeof providers[provider].token === "function"
+      ? providers[provider].token()
+      : providers[provider].token;
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
@@ -146,26 +166,43 @@ async function exchangeCode(provider: OAuthProvider, code: string, verifier: str
   });
   const data = (await response.json().catch(() => ({}))) as TokenResponse;
   if (!response.ok || !data.access_token || !data.refresh_token) {
-    throw new Error(data.error_description || data.error || "The calendar provider did not return an authorization token");
+    throw new Error(
+      data.error_description ||
+        data.error ||
+        "The calendar provider did not return an authorization token",
+    );
   }
   return data;
 }
 
 async function accountEmail(provider: OAuthProvider, token: string): Promise<string | null> {
   const response = await fetch(
-    provider === "google" ? "https://www.googleapis.com/oauth2/v3/userinfo" : "https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName",
+    provider === "google"
+      ? "https://www.googleapis.com/oauth2/v3/userinfo"
+      : "https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName",
     { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) },
   );
   if (!response.ok) return null;
-  const data = (await response.json()) as { email?: string; mail?: string; userPrincipalName?: string };
+  const data = (await response.json()) as {
+    email?: string;
+    mail?: string;
+    userPrincipalName?: string;
+  };
   return data.email ?? data.mail ?? data.userPrincipalName ?? null;
 }
 
-export async function completeCalendarOAuth(provider: OAuthProvider, request: Request): Promise<Response> {
+export async function completeCalendarOAuth(
+  provider: OAuthProvider,
+  request: Request,
+): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const state = params.get("state");
   const code = params.get("code");
-  if (params.get("error") || !state || !code) return errorRedirect(provider, params.get("error_description") || "Authorization was cancelled");
+  if (params.get("error") || !state || !code)
+    return errorRedirect(
+      provider,
+      params.get("error_description") || "Authorization was cancelled",
+    );
   const sql = await getSql();
   const rows = await sql<OAuthState>`
     delete from calendar_oauth_states
@@ -173,11 +210,17 @@ export async function completeCalendarOAuth(provider: OAuthProvider, request: Re
     returning id, user_id, provider, code_verifier
   `;
   const attempt = rows[0];
-  if (!attempt) return errorRedirect(provider, "This authorization link has expired. Start again from Settings.");
+  if (!attempt)
+    return errorRedirect(
+      provider,
+      "This authorization link has expired. Start again from Settings.",
+    );
   try {
     const tokens = await exchangeCode(provider, code, attempt.code_verifier);
     const email = await accountEmail(provider, tokens.access_token!);
-    const expiresAt = new Date(Date.now() + Math.max(60, tokens.expires_in ?? 3600) * 1000).toISOString();
+    const expiresAt = new Date(
+      Date.now() + Math.max(60, tokens.expires_in ?? 3600) * 1000,
+    ).toISOString();
     await sql`
       insert into calendar_oauth_connections (user_id, provider, access_token_cipher, refresh_token_cipher, expires_at, account_email)
       values (${attempt.user_id}, ${provider}, ${encrypt(tokens.access_token!)}, ${encrypt(tokens.refresh_token!)}, ${expiresAt}, ${email})
@@ -202,32 +245,61 @@ export async function completeCalendarOAuth(provider: OAuthProvider, request: Re
     url.searchParams.set("provider", provider);
     return Response.redirect(url, 302);
   } catch (error) {
-    return errorRedirect(provider, error instanceof Error ? error.message : "Calendar authorization failed");
+    return errorRedirect(
+      provider,
+      error instanceof Error ? error.message : "Calendar authorization failed",
+    );
   }
 }
 
-type Connection = { access_token_cipher: string; refresh_token_cipher: string; expires_at: string | Date };
+type Connection = {
+  access_token_cipher: string;
+  refresh_token_cipher: string;
+  expires_at: string | Date;
+};
 
 async function refreshToken(provider: OAuthProvider, refreshToken: string): Promise<TokenResponse> {
   const { clientId, clientSecret } = configured(provider);
-  const tokenUrl = typeof providers[provider].token === "function" ? providers[provider].token() : providers[provider].token;
-  const body = new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" });
-  const response = await fetch(tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body, signal: AbortSignal.timeout(12_000) });
+  const tokenUrl =
+    typeof providers[provider].token === "function"
+      ? providers[provider].token()
+      : providers[provider].token;
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  });
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    body,
+    signal: AbortSignal.timeout(12_000),
+  });
   const data = (await response.json().catch(() => ({}))) as TokenResponse;
-  if (!response.ok || !data.access_token) throw new Error(data.error_description || data.error || "Calendar authorization expired; reconnect it in Settings");
+  if (!response.ok || !data.access_token)
+    throw new Error(
+      data.error_description ||
+        data.error ||
+        "Calendar authorization expired; reconnect it in Settings",
+    );
   return data;
 }
 
 async function usableAccessToken(userId: string, provider: OAuthProvider): Promise<string> {
   const sql = await getSql();
-  const rows = await sql<Connection>`select access_token_cipher, refresh_token_cipher, expires_at from calendar_oauth_connections where user_id = ${userId} and provider = ${provider}`;
+  const rows =
+    await sql<Connection>`select access_token_cipher, refresh_token_cipher, expires_at from calendar_oauth_connections where user_id = ${userId} and provider = ${provider}`;
   const connection = rows[0];
   if (!connection) throw new Error("Calendar is not connected");
-  if (new Date(connection.expires_at).getTime() > Date.now() + 60_000) return decrypt(connection.access_token_cipher);
+  if (new Date(connection.expires_at).getTime() > Date.now() + 60_000)
+    return decrypt(connection.access_token_cipher);
   const refresh = decrypt(connection.refresh_token_cipher);
   const data = await refreshToken(provider, refresh);
   const nextRefresh = data.refresh_token || refresh;
-  const expiresAt = new Date(Date.now() + Math.max(60, data.expires_in ?? 3600) * 1000).toISOString();
+  const expiresAt = new Date(
+    Date.now() + Math.max(60, data.expires_in ?? 3600) * 1000,
+  ).toISOString();
   await sql`update calendar_oauth_connections set access_token_cipher = ${encrypt(data.access_token!)}, refresh_token_cipher = ${encrypt(nextRefresh)}, expires_at = ${expiresAt}, updated_at = now() where user_id = ${userId} and provider = ${provider}`;
   return data.access_token!;
 }
@@ -237,9 +309,10 @@ export async function listOAuthEvents(userId: string, source: CalendarSource): P
   const token = await usableAccessToken(userId, provider);
   const timeMin = iso(addDays(startOfDay(new Date()), -14));
   const timeMax = iso(addDays(startOfDay(new Date()), 90));
-  const url = provider === "google"
-    ? new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events")
-    : new URL("https://graph.microsoft.com/v1.0/me/calendarView");
+  const url =
+    provider === "google"
+      ? new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events")
+      : new URL("https://graph.microsoft.com/v1.0/me/calendarView");
   if (provider === "google") {
     url.searchParams.set("timeMin", timeMin);
     url.searchParams.set("timeMax", timeMax);
@@ -253,4 +326,130 @@ export async function listOAuthEvents(userId: string, source: CalendarSource): P
   }
   const { fetchCalendarPages } = await import("./calendar-pages.server");
   return fetchCalendarPages(provider, url, token);
+}
+
+export type CalendarEventWrite = {
+  title: string;
+  description: string;
+  location: string;
+  startsAt: string;
+  endsAt: string;
+  allDay: boolean;
+};
+
+function eventDates(input: CalendarEventWrite) {
+  const start = new Date(input.startsAt);
+  const end = new Date(input.endsAt);
+  if (!input.title.trim()) throw new Error("Add an event title.");
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+    throw new Error("Choose a valid end time after the start time.");
+  }
+  return { start, end };
+}
+
+export function providerEventBody(provider: OAuthProvider, input: CalendarEventWrite) {
+  const { start, end } = eventDates(input);
+  if (provider === "google") {
+    return {
+      summary: input.title.trim(),
+      description: input.description,
+      location: input.location,
+      start: input.allDay
+        ? { date: start.toISOString().slice(0, 10) }
+        : { dateTime: start.toISOString() },
+      end: input.allDay
+        ? { date: end.toISOString().slice(0, 10) }
+        : { dateTime: end.toISOString() },
+    };
+  }
+  return {
+    subject: input.title.trim(),
+    body: { contentType: "text", content: input.description },
+    location: { displayName: input.location },
+    start: {
+      dateTime: input.allDay ? `${start.toISOString().slice(0, 10)}T00:00:00` : start.toISOString(),
+      timeZone: "UTC",
+    },
+    end: {
+      dateTime: input.allDay ? `${end.toISOString().slice(0, 10)}T00:00:00` : end.toISOString(),
+      timeZone: "UTC",
+    },
+    isAllDay: input.allDay,
+  };
+}
+
+async function writeProviderEvent(
+  userId: string,
+  provider: OAuthProvider,
+  input: CalendarEventWrite,
+  externalId?: string,
+): Promise<{ externalId: string; event: Record<string, unknown> }> {
+  const token = await usableAccessToken(userId, provider);
+  return sendProviderEvent(provider, token, input, externalId);
+}
+
+export async function sendProviderEvent(
+  provider: OAuthProvider,
+  token: string,
+  input: CalendarEventWrite,
+  externalId?: string,
+  fetcher: typeof fetch = fetch,
+): Promise<{ externalId: string; event: Record<string, unknown> }> {
+  const url =
+    provider === "google"
+      ? new URL(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events${externalId ? `/${encodeURIComponent(externalId)}` : ""}`,
+        )
+      : new URL(
+          `https://graph.microsoft.com/v1.0/me/events${externalId ? `/${encodeURIComponent(externalId)}` : ""}`,
+        );
+  const response = await fetcher(url, {
+    method: externalId ? "PATCH" : "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify(providerEventBody(provider, input)),
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => ({}))) as {
+      error?: { message?: string };
+      message?: string;
+    };
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        "The calendar denied this change. Reconnect it in Settings and grant event access, then retry.",
+      );
+    }
+    throw new Error(
+      detail.error?.message ||
+        detail.message ||
+        `Calendar provider rejected the change (${response.status}).`,
+    );
+  }
+  const event = (await response.json()) as Record<string, unknown> & { id?: string };
+  if (!event.id)
+    throw new Error(
+      "The calendar saved the event but did not return its identifier. Sync the calendar to refresh it.",
+    );
+  return { externalId: event.id, event };
+}
+
+export function createProviderEvent(
+  userId: string,
+  provider: OAuthProvider,
+  input: CalendarEventWrite,
+) {
+  return writeProviderEvent(userId, provider, input);
+}
+
+export function updateProviderEvent(
+  userId: string,
+  provider: OAuthProvider,
+  externalId: string,
+  input: CalendarEventWrite,
+) {
+  return writeProviderEvent(userId, provider, input, externalId);
 }

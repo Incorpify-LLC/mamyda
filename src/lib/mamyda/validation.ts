@@ -55,6 +55,17 @@ export const noteInput = z.object({
   title: title.optional(),
   projectId: link,
 });
+export const calendarEventWriteInput = z.object({
+  sourceId: id,
+  eventId: id.optional(),
+  title: z.string().trim().min(1).max(200),
+  description: z.string().max(8_000),
+  location: z.string().max(500),
+  startsAt: z.string().min(1).max(64),
+  endsAt: z.string().min(1).max(64),
+  allDay: z.boolean(),
+  projectId: link,
+});
 export const vaultInput = z.object({
   id: id.optional(),
   title,
