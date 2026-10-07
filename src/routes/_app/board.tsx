@@ -27,7 +27,14 @@ import { cn } from "@/lib/utils";
 import type { Client, Project, Task } from "@/lib/mamyda/types";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_app/board")({ component: BoardPage });
+export const Route = createFileRoute("/_app/board")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...(typeof search.clientId === "string" ? { clientId: search.clientId } : {}),
+    ...(typeof search.projectId === "string" ? { projectId: search.projectId } : {}),
+    ...(typeof search.taskId === "string" ? { taskId: search.taskId } : {}),
+  }),
+  component: BoardPage,
+});
 
 function priorityTone(p: string) {
   if (p === "urgent") return "danger" as const;
@@ -36,6 +43,7 @@ function priorityTone(p: string) {
 }
 
 function BoardPage() {
+  const search = Route.useSearch();
   const ws = useWorkspace();
   const [clientId, setClientId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -44,10 +52,25 @@ function BoardPage() {
   const [editingClient, setEditingClient] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
   const [task, setTask] = useState<Partial<Task> | null>(null);
+  const [allProjectsView, setAllProjectsView] = useState(false);
+  const [workloadClient, setWorkloadClient] = useState("all");
+  const [workloadStatus, setWorkloadStatus] = useState("all");
+  const [workloadPriority, setWorkloadPriority] = useState("all");
+  const [workloadDue, setWorkloadDue] = useState("all");
 
   const clients = ws.data?.clients ?? [];
   const projects = ws.data?.projects ?? [];
   const tasks = ws.data?.tasks ?? [];
+
+  useEffect(() => {
+    if (!ws.data) return;
+    if (search.clientId) setClientId(search.clientId);
+    if (search.projectId) setProjectId(search.projectId);
+    if (search.taskId) {
+      const match = ws.data.tasks.find((item) => item.id === search.taskId);
+      if (match) setTask(match);
+    }
+  }, [ws.data, search.clientId, search.projectId, search.taskId]);
 
   const selectedClient = clientId ? clients.find((c) => c.id === clientId) : clients[0];
   const clientProjects = projects.filter((p) => p.clientId === selectedClient?.id);
@@ -55,6 +78,36 @@ function BoardPage() {
     ? (clientProjects.find((p) => p.id === projectId) ?? clientProjects[0])
     : clientProjects[0];
   const boardTasks = tasks.filter((t) => t.projectId === selectedProject?.id);
+  const activeClients = clients.filter((client) => !client.archived);
+  const activeProjects = projects.filter(
+    (project) =>
+      !project.archived && activeClients.some((client) => client.id === project.clientId),
+  );
+  const activeProjectIds = new Set(activeProjects.map((project) => project.id));
+  const workloadTasks = tasks
+    .filter((item) => {
+      if (!activeProjectIds.has(item.projectId)) return false;
+      if (
+        workloadClient !== "all" &&
+        activeProjects.find((project) => project.id === item.projectId)?.clientId !== workloadClient
+      )
+        return false;
+      if (workloadStatus !== "all" && item.columnId !== workloadStatus) return false;
+      if (workloadPriority !== "all" && item.priority !== workloadPriority) return false;
+      if (workloadDue === "due" && (!item.dueAt || item.columnId === "done")) return false;
+      if (
+        workloadDue === "overdue" &&
+        (!item.dueAt || new Date(item.dueAt) >= new Date() || item.columnId === "done")
+      )
+        return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (a.dueAt && b.dueAt) return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+      if (a.dueAt) return -1;
+      if (b.dueAt) return 1;
+      return a.title.localeCompare(b.title);
+    });
 
   async function refresh() {
     await ws.refetch();
@@ -64,7 +117,7 @@ function BoardPage() {
     <AppShell
       title="Board"
       action={
-        selectedProject ? (
+        selectedProject && !allProjectsView ? (
           <Button
             size="sm"
             onClick={() =>
@@ -83,109 +136,258 @@ function BoardPage() {
         ) : undefined
       }
     >
-      <div className="mb-4 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <Label className="mb-1 block text-xs text-muted-foreground" htmlFor="board-client">
-              Client
-            </Label>
-            <select
-              id="board-client"
-              aria-label="Select client"
-              className="h-10 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm"
-              value={selectedClient?.id ?? ""}
-              onChange={(event) => {
-                setClientId(event.target.value || null);
-                setProjectId(null);
-              }}
-            >
-              {clients.length === 0 && <option value="">No clients yet</option>}
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          {selectedClient && (
+      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Board view">
+        <Button
+          size="sm"
+          variant={!allProjectsView ? "default" : "outline"}
+          aria-pressed={!allProjectsView}
+          onClick={() => setAllProjectsView(false)}
+        >
+          Project board
+        </Button>
+        <Button
+          size="sm"
+          variant={allProjectsView ? "default" : "outline"}
+          aria-pressed={allProjectsView}
+          onClick={() => setAllProjectsView(true)}
+        >
+          All projects
+        </Button>
+      </div>
+      {!allProjectsView && (
+        <div className="mb-4 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <Label className="mb-1 block text-xs text-muted-foreground" htmlFor="board-client">
+                Client
+              </Label>
+              <select
+                id="board-client"
+                aria-label="Select client"
+                className="h-10 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm"
+                value={selectedClient?.id ?? ""}
+                onChange={(event) => {
+                  setClientId(event.target.value || null);
+                  setProjectId(null);
+                }}
+              >
+                {clients.length === 0 && <option value="">No clients yet</option>}
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {selectedClient && (
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={`Edit client ${selectedClient.name}`}
+                title={`Edit ${selectedClient.name}`}
+                onClick={() => {
+                  setEditingClient(true);
+                  setClientOpen(true);
+                }}
+              >
+                <Pencil className="size-4" />
+              </Button>
+            )}
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon"
-              aria-label={`Edit client ${selectedClient.name}`}
-              title={`Edit ${selectedClient.name}`}
+              aria-label="New client"
+              title="New client"
               onClick={() => {
-                setEditingClient(true);
+                setEditingClient(false);
                 setClientOpen(true);
               }}
             >
-              <Pencil className="size-4" />
+              <Plus className="size-4" />
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="New client"
-            title="New client"
-            onClick={() => {
-              setEditingClient(false);
-              setClientOpen(true);
-            }}
-          >
-            <Plus className="size-4" />
-          </Button>
-        </div>
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <Label className="mb-1 block text-xs text-muted-foreground" htmlFor="board-project">
-              Project
-            </Label>
-            <select
-              id="board-project"
-              aria-label="Select project"
-              className="h-10 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm"
-              value={selectedProject?.id ?? ""}
-              disabled={!selectedClient}
-              onChange={(event) => setProjectId(event.target.value || null)}
-            >
-              {clientProjects.length === 0 && <option value="">No projects yet</option>}
-              {clientProjects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
           </div>
-          {selectedProject && (
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <Label className="mb-1 block text-xs text-muted-foreground" htmlFor="board-project">
+                Project
+              </Label>
+              <select
+                id="board-project"
+                aria-label="Select project"
+                className="h-10 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm"
+                value={selectedProject?.id ?? ""}
+                disabled={!selectedClient}
+                onChange={(event) => setProjectId(event.target.value || null)}
+              >
+                {clientProjects.length === 0 && <option value="">No projects yet</option>}
+                {clientProjects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {selectedProject && (
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={`Edit project ${selectedProject.name}`}
+                title={`Edit ${selectedProject.name}`}
+                onClick={() => {
+                  setEditingProject(true);
+                  setProjectOpen(true);
+                }}
+              >
+                <Pencil className="size-4" />
+              </Button>
+            )}
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon"
-              aria-label={`Edit project ${selectedProject.name}`}
-              title={`Edit ${selectedProject.name}`}
+              disabled={!selectedClient}
+              aria-label="New project"
+              title="New project"
               onClick={() => {
-                setEditingProject(true);
+                setEditingProject(false);
                 setProjectOpen(true);
               }}
             >
-              <Pencil className="size-4" />
+              <Plus className="size-4" />
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={!selectedClient}
-            aria-label="New project"
-            title="New project"
-            onClick={() => {
-              setEditingProject(false);
-              setProjectOpen(true);
-            }}
-          >
-            <Plus className="size-4" />
-          </Button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {selectedProject ? (
+      {allProjectsView ? (
+        <section aria-label="All project tasks">
+          <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <Label className="space-y-1 text-xs text-muted-foreground">
+              Client
+              <select
+                aria-label="Filter by client"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+                value={workloadClient}
+                onChange={(e) => setWorkloadClient(e.target.value)}
+              >
+                <option value="all">All clients</option>
+                {activeClients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+            </Label>
+            <Label className="space-y-1 text-xs text-muted-foreground">
+              Status
+              <select
+                aria-label="Filter by status"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+                value={workloadStatus}
+                onChange={(e) => setWorkloadStatus(e.target.value)}
+              >
+                <option value="all">All statuses</option>
+                {TASK_COLUMNS.map((column) => (
+                  <option key={column.id} value={column.id}>
+                    {column.label}
+                  </option>
+                ))}
+              </select>
+            </Label>
+            <Label className="space-y-1 text-xs text-muted-foreground">
+              Priority
+              <select
+                aria-label="Filter by priority"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+                value={workloadPriority}
+                onChange={(e) => setWorkloadPriority(e.target.value)}
+              >
+                <option value="all">All priorities</option>
+                {PRIORITIES.map((priority) => (
+                  <option key={priority} value={priority}>
+                    {priority}
+                  </option>
+                ))}
+              </select>
+            </Label>
+            <Label className="space-y-1 text-xs text-muted-foreground">
+              Due date
+              <select
+                aria-label="Filter by due date"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground"
+                value={workloadDue}
+                onChange={(e) => setWorkloadDue(e.target.value)}
+              >
+                <option value="all">Any due date</option>
+                <option value="due">Has due date</option>
+                <option value="overdue">Overdue</option>
+              </select>
+            </Label>
+          </div>
+          <p className="mb-3 text-sm text-muted-foreground">
+            {workloadTasks.length} task{workloadTasks.length === 1 ? "" : "s"} across{" "}
+            {activeProjects.length} active projects
+          </p>
+          {workloadTasks.length ? (
+            <div className="space-y-2">
+              {workloadTasks.map((item) => {
+                const project = activeProjects.find((entry) => entry.id === item.projectId);
+                const client = activeClients.find((entry) => entry.id === project?.clientId);
+                const overdue = Boolean(
+                  item.dueAt && new Date(item.dueAt) < new Date() && item.columnId !== "done",
+                );
+                return (
+                  <Card
+                    key={item.id}
+                    className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setTask(item)}
+                      className="min-w-0 flex-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`Open task ${item.title}`}
+                    >
+                      <span className="block truncate text-sm font-medium">{item.title}</span>
+                      <span className="mt-1 block truncate text-xs text-muted-foreground">
+                        {client?.name ?? "Client"} · {project?.name ?? "Project"}
+                      </span>
+                    </button>
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <Badge tone={priorityTone(item.priority)}>{item.priority}</Badge>
+                      {item.dueAt && (
+                        <Badge tone={overdue ? "danger" : "muted"}>
+                          {overdue ? "Overdue · " : "Due · "}
+                          {formatDay(item.dueAt)}
+                        </Badge>
+                      )}
+                      <select
+                        aria-label={`Move ${item.title} to status`}
+                        value={item.columnId}
+                        className="h-9 min-w-32 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                        onChange={async (e) => {
+                          await moveTask({
+                            data: { id: item.id, columnId: e.target.value, position: Date.now() },
+                          });
+                          await refresh();
+                        }}
+                      >
+                        {TASK_COLUMNS.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <Card className="p-8 text-center text-sm text-muted-foreground">
+              No tasks match these filters. Try another filter or add work from a project board.
+            </Card>
+          )}
+        </section>
+      ) : selectedProject ? (
         <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-6 md:mx-0 md:px-0">
           {TASK_COLUMNS.map((col) => {
             const colTasks = boardTasks
@@ -297,7 +499,7 @@ function BoardPage() {
         </p>
       )}
 
-      {selectedClient && <ClientFiles clientId={selectedClient.id} />}
+      {selectedClient && !allProjectsView && <ClientFiles clientId={selectedClient.id} />}
 
       <ClientDialog
         open={clientOpen}
