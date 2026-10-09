@@ -8,6 +8,8 @@ The authenticated review and user decisions define this sequence:
 4. [#20](https://github.com/Incorpify-LLC/mamyda/issues/20): progressively disclosed editors and clear current Vault capabilities.
 5. [#21](https://github.com/Incorpify-LLC/mamyda/issues/21): integration status, sync clarity and quieter settings without alert dispatch on read.
 
+Increment #18 is now implemented and tested locally; see [submission verification](submission-verification.md). It remains open pending release approval and live human checks.
+
 ## First increment: deployed
 
 Shared light/dark tokens are neutral/blue with smaller corners. All display headings use the sans-serif family; the serif font download was removed. Client identity colors remain unchanged.

@@ -4,7 +4,7 @@ import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
 const origin = "https://mamyda.incorpify.in";
-const expected = process.env.EXPECTED_RELEASE ?? "board-ux-20261009-17";
+const expected = process.env.EXPECTED_RELEASE ?? "submission-verification-20261009-18";
 assert.equal((await (await fetch(`${origin}/api/health`)).json()).status, "ok");
 assert.equal((await (await fetch(`${origin}/release.json`)).json()).release, expected);
 const denied = await fetch(`${origin}/api/media/uploads/00000000-0000-4000-8000-000000000000`, {

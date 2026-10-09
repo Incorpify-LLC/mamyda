@@ -39,6 +39,7 @@ export const saveMinute = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => minuteInput.parse(input))
   .handler(async ({ context, data }) => {
+    await requireTurnstile("minute-save");
     const sql = await getSql();
     if (data.projectId) {
       const owned =

@@ -11,6 +11,8 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { AppShell } from "@/components/app-shell";
+import { SubmissionVerificationProvider } from "@/components/submission-verification";
+import { ClientDialog, ProjectDialog } from "@/components/workspace-managers";
 import { ProjectTaskBoard } from "@/components/project-task-board";
 import type { Task } from "@/lib/mamyda/types";
 import { MinuteRecordings } from "@/components/minute-recordings";
@@ -23,6 +25,10 @@ import type { ChatMeta } from "@/lib/mamyda/chat.server";
 import "@/styles.css";
 
 const qa = { asks: [] as unknown[], saves: [] as unknown[], failNext: false };
+const fixtureWindow = window as unknown as {
+  __verificationQA?: { calls: unknown[]; failNext: boolean };
+};
+fixtureWindow.__verificationQA ??= { calls: [], failNext: false };
 (window as unknown as { __chatQA: typeof qa }).__chatQA = qa;
 const legacy: LoadedChat = {
   id: "legacy",
@@ -81,6 +87,8 @@ function Fixture() {
     },
   };
   void generation;
+  if (new URLSearchParams(window.location.search).has("verification"))
+    return <VerificationFixture />;
   if (new URLSearchParams(window.location.search).has("board")) return <BoardFixture />;
   if (new URLSearchParams(window.location.search).has("recording"))
     return (
@@ -122,6 +130,42 @@ function Fixture() {
         onSearch={setSearch}
         onSaved={() => refresh((value) => value + 1)}
         services={services}
+      />
+    </AppShell>
+  );
+}
+function VerificationFixture() {
+  const [open, setOpen] = useState(false);
+  const [projectOpen, setProjectOpen] = useState(false);
+  const [saved, setSaved] = useState(0);
+  return (
+    <AppShell title="Clients/Projects">
+      <button type="button" onClick={() => setOpen(true)}>
+        New client
+      </button>
+      <button type="button" onClick={() => setProjectOpen(true)}>
+        New project
+      </button>
+      <p role="status">Saved {saved}</p>
+      <ClientDialog
+        open={open}
+        onOpenChange={setOpen}
+        editing={false}
+        onSaved={() => setSaved((n) => n + 1)}
+      />
+      <ProjectDialog
+        open={projectOpen}
+        onOpenChange={setProjectOpen}
+        editing={false}
+        client={{
+          id: "client",
+          name: "Example",
+          email: null,
+          color: "sage",
+          archived: false,
+          createdAt: "2026-10-09",
+        }}
+        onSaved={() => setSaved((n) => n + 1)}
       />
     </AppShell>
   );
@@ -180,7 +224,9 @@ const router = createRouter({
 });
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={new QueryClient()}>
-    <RouterProvider router={router} />
+    <SubmissionVerificationProvider>
+      <RouterProvider router={router} />
+    </SubmissionVerificationProvider>
     <Toaster />
   </QueryClientProvider>,
 );

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Toaster } from "sonner";
+import { SubmissionVerificationProvider } from "@/components/submission-verification";
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -13,7 +14,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   );
   return (
     <QueryClientProvider client={client}>
-      {children}
+      <SubmissionVerificationProvider>{children}</SubmissionVerificationProvider>
       <Toaster
         position="bottom-right"
         toastOptions={{

@@ -4,7 +4,7 @@ import { getTranscriptionSettings, saveTranscriptionSettings } from "@/lib/mamyd
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TurnstileField } from "@/components/turnstile-field";
+import { useVerifiedToken } from "@/components/submission-verification";
 import { toast } from "sonner";
 export function TranscriptionSettings() {
   const query = useQuery({
@@ -15,9 +15,9 @@ export function TranscriptionSettings() {
     [enabled, setEnabled] = useState(false),
     [key, setKey] = useState(""),
     [clear, setClear] = useState(false),
-    [token, setToken] = useState(""),
-    [reset, setReset] = useState(0),
     [busy, setBusy] = useState(false);
+  const verify = useVerifiedToken();
+  const [submissionError, setSubmissionError] = useState("");
   useEffect(() => {
     if (query.data) {
       setModel(query.data.model);
@@ -43,7 +43,9 @@ export function TranscriptionSettings() {
             e.preventDefault();
             if (busy) return;
             setBusy(true);
+            setSubmissionError("");
             try {
+              const token = await verify("transcription-settings", "Saving transcription settings");
               await saveTranscriptionSettings({
                 data: { model, enabled, apiKey: key, clearKey: clear },
                 headers: { "x-turnstile-response": token },
@@ -53,16 +55,24 @@ export function TranscriptionSettings() {
               await query.refetch();
               toast.success("Transcription settings saved; provider access is not tested");
             } catch (error) {
+              setSubmissionError(
+                error instanceof Error
+                  ? error.message
+                  : "Submission failed. Your draft is unchanged.",
+              );
               toast.error(
                 error instanceof Error ? error.message : "Could not save transcription settings",
               );
             } finally {
               setBusy(false);
-              setToken("");
-              setReset((value) => value + 1);
             }
           }}
         >
+          {submissionError && (
+            <p role="alert" className="text-sm text-destructive">
+              {submissionError} Retry when ready.
+            </p>
+          )}
           <fieldset disabled={busy || query.isLoading} className="space-y-3">
             <label className="flex gap-2 text-sm">
               <input
@@ -108,8 +118,7 @@ export function TranscriptionSettings() {
               />
               Remove saved transcription key
             </label>
-            <TurnstileField action="transcription-settings" resetKey={reset} onToken={setToken} />
-            <Button type="submit" disabled={!token || busy}>
+            <Button type="submit" disabled={busy}>
               Save transcription settings
             </Button>
           </fieldset>

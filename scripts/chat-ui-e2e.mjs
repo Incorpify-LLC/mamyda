@@ -62,8 +62,9 @@ try {
   await page.getByRole("button", { name: "Save chat", exact: true }).click();
   await page.getByLabel("Chat title", { exact: true }).fill("Reviewed daily chat");
   await page.getByLabel("Tags (comma separated)").fill("project, review");
-  await page.getByRole("button", { name: "Verify security fixture" }).click();
+  assert.equal(await page.locator('[data-action="turnstile-spin-v2"]').count(), 0);
   await page.getByRole("button", { name: "Save chat now", exact: true }).click();
+  await page.getByRole("button", { name: "Verify security fixture" }).click();
   await page.getByText("Daily chat saved", { exact: true }).waitFor();
   const saved = await page.evaluate(() => window.__chatQA.saves);
   assert.equal(saved.length, 1);

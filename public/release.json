@@ -1,5 +1,5 @@
 {
-  "release": "board-ux-20261009-17",
+  "release": "submission-verification-20261009-18",
   "mode": "production",
-  "description": "Neutral-blue light and dark styling with sans-serif headings. Project-local task creation, mobile grouped status list by default, optional remembered Kanban view, and keyboard/touch task controls. Existing chat, recording and encrypted-content features are preserved."
+  "description": "Ordinary saves use one on-demand security check and continue automatically after fresh verification. Drafts survive cancellation and failures. Explicit AI, paid-transcription and destructive-action confirmations are preserved."
 }

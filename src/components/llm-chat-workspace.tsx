@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TurnstileField } from "@/components/turnstile-field";
+import { useVerifiedToken } from "@/components/submission-verification";
 import {
   chatSecurityReducer,
   chatTurnstileAction,
@@ -122,6 +123,7 @@ export function LLMChatWorkspace(props: Props) {
   const [optionsOpen, setOptionsOpen] = useState(false),
     [consent, setConsent] = useState(false);
   const [security, dispatchSecurity] = useReducer(chatSecurityReducer, initialChatSecurity);
+  const verify = useVerifiedToken();
   const inFlight = useRef(false),
     transcriptEnd = useRef<HTMLDivElement>(null);
   const canAsk = Boolean(
@@ -220,7 +222,8 @@ export function LLMChatWorkspace(props: Props) {
     dispatchSecurity({ type: "begin", action });
   }
   async function submit() {
-    if (inFlight.current || !security.token || !security.action || encrypted) return;
+    if (inFlight.current || !security.action || encrypted) return;
+    if (security.action === "ask" && !security.token) return;
     if (security.action === "ask" && (!canAsk || !consent || !settings)) return;
     if (security.action === "save" && (!messages.length || !title.trim() || !day)) return;
     inFlight.current = true;
@@ -254,9 +257,10 @@ export function LLMChatWorkspace(props: Props) {
         setQuestion("");
         setDirty(true);
       } else {
+        const token = await verify("chat-save", "Saving daily chat");
         const saved = await services.save(
           plainChatSave({ id, date: day, title, tags, revision, messages, encrypted }),
-          security.token,
+          token,
         );
         setId(saved.id);
         setRevision(saved.revision);
@@ -685,7 +689,7 @@ export function LLMChatWorkspace(props: Props) {
           <DialogDescription>
             {security.action === "ask"
               ? "Complete the security check, then choose Ask Model now. Nothing is sent until you confirm."
-              : "Choose how this conversation appears in Saved chats, then complete the security check."}
+              : "Choose how this conversation appears in Saved chats. Save chat now checks and saves in one step."}
           </DialogDescription>
           {security.action === "save" && (
             <fieldset disabled={busy} className="mt-4 space-y-3">
@@ -755,7 +759,7 @@ export function LLMChatWorkspace(props: Props) {
               </span>
             </label>
           )}
-          {security.action && (
+          {security.action === "ask" && (
             <div className="my-4">
               <TurnstileField
                 key={security.generation}
@@ -774,7 +778,7 @@ export function LLMChatWorkspace(props: Props) {
             <Button
               disabled={
                 busy ||
-                !security.token ||
+                (security.action === "ask" && !security.token) ||
                 (security.action === "ask"
                   ? !consent || !canAsk
                   : !messages.length || !title.trim() || !day)

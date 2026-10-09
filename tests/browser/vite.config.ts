@@ -11,6 +11,7 @@ export default defineConfig({
       { find: "@/lib/auth/gates", replacement: stub },
       { find: "@/components/global-search", replacement: stub },
       { find: "@/lib/mamyda/media", replacement: stub },
+      { find: "@/lib/mamyda/workspace", replacement: stub },
       { find: "@", replacement: fileURLToPath(new URL("../../src", import.meta.url)) },
     ],
   },

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TurnstileField, type TurnstileStatus } from "@/components/turnstile-field";
+import { useVerifiedToken } from "@/components/submission-verification";
 import { addIcsSource, connectProvider, removeSource } from "@/lib/mamyda/calendar";
 import { useAlerts, useCalendar, useWorkspace } from "@/lib/mamyda/hooks";
 import { beginTelegramLink } from "@/lib/mamyda/telegram";
@@ -61,7 +62,7 @@ function SettingsPage() {
     username: string;
     link: string;
   } | null>(null);
-  const [connectTarget, setConnectTarget] = useState<"google" | "outlook" | null>(null);
+  const verify = useVerifiedToken();
   const [section, setSection] = useState<"calendars" | "alerts" | "workspace" | "llm">("calendars");
 
   const alertEmail = email ?? profile?.alertEmail ?? "";
@@ -92,13 +93,11 @@ function SettingsPage() {
     captchaAction === action && captchaStatus === "verified" && Boolean(captchaToken);
 
   async function connectCalendar(provider: "google" | "outlook") {
-    if (!captchaReady("calendar-connect")) {
-      setConnectTarget(provider);
-      if (captchaAction !== "calendar-connect") requestCaptcha("calendar-connect");
-      return;
-    }
+    if (busyAction) return;
+    resetCaptcha();
     setBusyAction("calendar-connect");
     try {
+      const captchaToken = await verify("calendar-connect", "Connecting calendar");
       const result = await connectProvider({
         data: { provider },
         headers: { "x-turnstile-response": captchaToken },
@@ -151,6 +150,7 @@ function SettingsPage() {
   }, []);
 
   function selectSection(next: "calendars" | "alerts" | "workspace" | "llm") {
+    resetCaptcha();
     setSection(next);
     window.history.replaceState({}, "", `/settings?section=${next}`);
   }
@@ -158,6 +158,11 @@ function SettingsPage() {
   return (
     <AppShell title="Settings">
       <div className="mx-auto max-w-2xl space-y-6">
+        {captchaError && (
+          <p role="alert" className="text-sm text-destructive">
+            {captchaError}
+          </p>
+        )}
         <div
           className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-card/60 p-1"
           role="tablist"
@@ -203,9 +208,7 @@ function SettingsPage() {
                 }
                 onClick={() => void connectCalendar("google")}
               >
-                {connectTarget === "google" && captchaAction === "calendar-connect"
-                  ? "Continue to Google"
-                  : "Connect Google Calendar"}
+                Connect Google Calendar
               </Button>
               <Button
                 variant="outline"
@@ -215,36 +218,18 @@ function SettingsPage() {
                 }
                 onClick={() => void connectCalendar("outlook")}
               >
-                {connectTarget === "outlook" && captchaAction === "calendar-connect"
-                  ? "Continue to Microsoft"
-                  : "Connect Microsoft Calendar"}
+                Connect Microsoft Calendar
               </Button>
             </div>
-            {captchaAction === "calendar-connect" && (
-              <div className="mt-3">
-                {captchaError && (
-                  <p role="alert" className="mb-2 text-sm text-destructive">
-                    {captchaError}
-                  </p>
-                )}
-                <TurnstileField
-                  action="calendar-connect"
-                  resetKey={captchaKey}
-                  onToken={setCaptchaToken}
-                  onStatus={setCaptchaStatus}
-                />
-              </div>
-            )}
             <form
               className="mt-5 grid gap-3 sm:grid-cols-[8rem_1fr_auto]"
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (!captchaReady("calendar-feed")) {
-                  if (captchaAction !== "calendar-feed") requestCaptcha("calendar-feed");
-                  return;
-                }
+                if (busyAction) return;
+                resetCaptcha();
                 setBusyAction("calendar-feed");
                 try {
+                  const captchaToken = await verify("calendar-feed", "Checking submission");
                   const result = await addIcsSource({
                     data: { name: icsName, url: icsUrl, provider: "zoho" },
                     headers: { "x-turnstile-response": captchaToken },
@@ -291,28 +276,9 @@ function SettingsPage() {
                   (captchaAction === "calendar-feed" && !captchaReady("calendar-feed"))
                 }
               >
-                {busyAction === "calendar-feed"
-                  ? "Adding…"
-                  : captchaReady("calendar-feed")
-                    ? "Add feed"
-                    : "Verify to add feed"}
+                {busyAction === "calendar-feed" ? "Adding…" : "Add feed"}
               </Button>
             </form>
-            {captchaAction === "calendar-feed" && (
-              <div className="mt-3">
-                {captchaError && (
-                  <p role="alert" className="mb-2 text-sm text-destructive">
-                    {captchaError}
-                  </p>
-                )}
-                <TurnstileField
-                  action="calendar-feed"
-                  resetKey={captchaKey}
-                  onToken={setCaptchaToken}
-                  onStatus={setCaptchaStatus}
-                />
-              </div>
-            )}
             <ul className="mt-4 space-y-2">
               {(cal.data?.sources ?? []).map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-2 text-sm">
@@ -420,12 +386,11 @@ function SettingsPage() {
                   (captchaAction === "profile-update" && !captchaReady("profile-update"))
                 }
                 onClick={async () => {
-                  if (!captchaReady("profile-update")) {
-                    if (captchaAction !== "profile-update") requestCaptcha("profile-update");
-                    return;
-                  }
+                  if (busyAction) return;
+                  resetCaptcha();
                   setBusyAction("profile-update");
                   try {
+                    const captchaToken = await verify("profile-update", "Checking submission");
                     await updateProfile({
                       data: {
                         alertEmail: alertEmail || null,
@@ -450,11 +415,7 @@ function SettingsPage() {
                   }
                 }}
               >
-                {busyAction === "profile-update"
-                  ? "Saving…"
-                  : captchaReady("profile-update")
-                    ? "Save preferences"
-                    : "Verify to save"}
+                {busyAction === "profile-update" ? "Saving…" : "Save preferences"}
               </Button>
               <Button
                 className="ml-2 mt-4"
@@ -532,21 +493,6 @@ function SettingsPage() {
                   ))}
                 </div>
               )}
-              {captchaAction === "profile-update" && (
-                <div className="mt-3">
-                  {captchaError && (
-                    <p role="alert" className="mb-2 text-sm text-destructive">
-                      {captchaError}
-                    </p>
-                  )}
-                  <TurnstileField
-                    action="profile-update"
-                    resetKey={captchaKey}
-                    onToken={setCaptchaToken}
-                    onStatus={setCaptchaStatus}
-                  />
-                </div>
-              )}
               <div className="mt-5">
                 <h3 className="text-sm font-medium">Outbound log</h3>
                 <ul className="mt-2 space-y-2">
@@ -610,12 +556,11 @@ function SettingsPage() {
                   (captchaAction === "telegram-link" && !captchaReady("telegram-link"))
                 }
                 onClick={async () => {
-                  if (!captchaReady("telegram-link")) {
-                    if (captchaAction !== "telegram-link") requestCaptcha("telegram-link");
-                    return;
-                  }
+                  if (busyAction) return;
+                  resetCaptcha();
                   setBusyAction("telegram-link");
                   try {
+                    const captchaToken = await verify("telegram-link", "Checking submission");
                     const next = await beginTelegramLink({
                       headers: { "x-turnstile-response": captchaToken },
                     });
@@ -636,27 +581,10 @@ function SettingsPage() {
               >
                 {busyAction === "telegram-link"
                   ? "Working…"
-                  : captchaReady("telegram-link")
-                    ? telegram
-                      ? "New Telegram code"
-                      : "Get a Telegram code"
-                    : "Verify to link Telegram"}
+                  : telegram
+                    ? "New Telegram code"
+                    : "Get a Telegram code"}
               </Button>
-              {captchaAction === "telegram-link" && (
-                <div className="mt-3">
-                  {captchaError && (
-                    <p role="alert" className="mb-2 text-sm text-destructive">
-                      {captchaError}
-                    </p>
-                  )}
-                  <TurnstileField
-                    action="telegram-link"
-                    resetKey={captchaKey}
-                    onToken={setCaptchaToken}
-                    onStatus={setCaptchaStatus}
-                  />
-                </div>
-              )}
             </Card>
             <Card className="p-5">
               <h2 className="font-display text-xl">Delivery status</h2>

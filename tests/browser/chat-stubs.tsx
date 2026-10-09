@@ -23,3 +23,17 @@ export async function acceptMediaTranscript() {
 export async function discardMediaRecording() {
   throw new Error("No fixture recording");
 }
+export async function upsertClient(input: unknown) {
+  const fixture = window as unknown as {
+    __verificationQA: { calls: unknown[]; failNext: boolean };
+  };
+  fixture.__verificationQA.calls.push(input);
+  if (fixture.__verificationQA.failNext) {
+    fixture.__verificationQA.failNext = false;
+    throw new Error("Fixture save failure. Your draft is unchanged.");
+  }
+  return { ok: true };
+}
+export const upsertProject = upsertClient;
+export const archiveClient = upsertClient;
+export const archiveProject = upsertClient;

@@ -21,6 +21,7 @@ export function TurnstileField({
   onStatus,
   size = "normal",
   refreshExpired = "auto",
+  appearance = "always",
 }: {
   action: string;
   resetKey: number;
@@ -28,6 +29,7 @@ export function TurnstileField({
   onStatus?: (status: TurnstileStatus) => void;
   size?: "normal" | "compact" | "flexible";
   refreshExpired?: "auto" | "manual";
+  appearance?: "always" | "execute" | "interaction-only";
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const widgetId = useRef("");
@@ -57,7 +59,7 @@ export function TurnstileField({
     return () => {
       active = false;
     };
-  }, [updateStatus]);
+  }, [updateStatus, retryCount]);
 
   useEffect(() => {
     if (!siteKey || !holder.current) return;
@@ -76,6 +78,7 @@ export function TurnstileField({
           sitekey: siteKey,
           action,
           size,
+          appearance,
           "refresh-expired": refreshExpired,
           callback: (token: string) => {
             if (!active) return;
@@ -92,6 +95,12 @@ export function TurnstileField({
             onToken("");
             updateStatus("expired");
           },
+          "timeout-callback": () => {
+            if (!active) return;
+            onToken("");
+            updateStatus("expired");
+          },
+          "unsupported-callback": loadError,
         });
       } catch {
         updateStatus("error");
@@ -132,11 +141,21 @@ export function TurnstileField({
       if (widgetId.current && turnstile) turnstile.remove(widgetId.current);
       widgetId.current = "";
     };
-  }, [action, onToken, resetKey, retryCount, siteKey, updateStatus, size, refreshExpired]);
+  }, [
+    action,
+    onToken,
+    resetKey,
+    retryCount,
+    siteKey,
+    updateStatus,
+    size,
+    refreshExpired,
+    appearance,
+  ]);
 
   return (
     <div className="space-y-1" data-action="turnstile-spin-v2">
-      {siteKey && <div ref={holder} className="min-h-16" />}
+      {siteKey && <div ref={holder} className={appearance === "always" ? "min-h-16" : undefined} />}
       <div
         className="flex min-h-5 items-center gap-2 text-xs text-muted-foreground"
         role="status"
@@ -149,7 +168,7 @@ export function TurnstileField({
         {status === "error" && "Security check failed to load. Retry the check."}
         {status === "unavailable" &&
           "Security check is not configured. Contact your administrator."}
-        {(status === "expired" || status === "error") && siteKey && (
+        {(status === "expired" || status === "error") && (
           <button
             type="button"
             className="font-medium text-foreground underline underline-offset-2"

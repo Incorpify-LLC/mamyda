@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import type { Minute } from "@/lib/mamyda/types";
 import { useWritingDraft } from "@/components/writing-draft";
 import { boardSearchContext } from "@/lib/board-navigation";
+import { useVerifiedToken } from "@/components/submission-verification";
 
 export const Route = createFileRoute("/_app/minutes")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -39,6 +40,7 @@ function emptyMinute(): Minute {
 }
 
 function MinutesPage() {
+  const verify = useVerifiedToken();
   const search = Route.useSearch();
   const list = useMinutes();
   const ws = useWorkspace();
@@ -60,6 +62,7 @@ function MinutesPage() {
   const events = useMemo(() => cal.data?.events ?? [], [cal.data]);
 
   async function persist() {
+    const captcha = await verify("minute-save", "Saving minutes");
     const id = await saveMinute({
       data: {
         id: current.id || undefined,
@@ -69,6 +72,7 @@ function MinutesPage() {
         eventId: current.eventId,
         projectId: current.projectId,
       },
+      headers: { "x-turnstile-response": captcha },
     });
     const saved = { ...current, id };
     setCurrent(saved);

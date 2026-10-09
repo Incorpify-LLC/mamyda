@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { TurnstileField } from "@/components/turnstile-field";
+import { useVerifiedToken } from "@/components/submission-verification";
 import { PRIORITIES, TASK_COLUMNS } from "@/lib/columns";
 import { deleteTask, moveTask, upsertTask } from "@/lib/mamyda/workspace";
 import { useWorkspace } from "@/lib/mamyda/hooks";
@@ -367,8 +367,9 @@ function TaskDialog({
   const [llmBusy, setLLMBusy] = useState(false);
   const [priority, setPriority] = useState("normal");
   const [dueAt, setDueAt] = useState("");
-  const [captcha, setCaptcha] = useState("");
-  const [captchaKey, setCaptchaKey] = useState(0);
+  const verify = useVerifiedToken();
+  const [busy, setBusy] = useState(false);
+  const [submissionError, setSubmissionError] = useState("");
 
   const open = Boolean(task);
   const isNew = !task?.id;
@@ -393,7 +394,7 @@ function TaskDialog({
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        if (!v && !llmBusy) onClose();
+        if (!v && !llmBusy && !busy) onClose();
       }}
     >
       <DialogContent>
@@ -402,8 +403,11 @@ function TaskDialog({
           className="mt-4 space-y-3"
           onSubmit={async (e) => {
             e.preventDefault();
-            if (!task?.projectId || llmBusy) return;
+            if (!task?.projectId || llmBusy || busy) return;
+            setBusy(true);
+            setSubmissionError("");
             try {
+              const captcha = await verify("task-manage", "Saving task");
               const encryption =
                 encryptContent && (!task.encrypted || unlocked)
                   ? await encryptPrivateContent(notes, ws.data?.profile.vaultPublicKey)
@@ -422,119 +426,150 @@ function TaskDialog({
                 },
                 headers: captcha ? { "x-turnstile-response": captcha } : undefined,
               });
-              setCaptcha("");
-              setCaptchaKey((value) => value + 1);
               toast.success("Task saved");
               onClose();
               onSaved();
             } catch (error) {
+              setSubmissionError(
+                error instanceof Error
+                  ? error.message
+                  : "Submission failed. Your draft is unchanged.",
+              );
               toast.error(error instanceof Error ? error.message : "Could not save task");
             } finally {
-              setCaptcha("");
-              setCaptchaKey((value) => value + 1);
+              setBusy(false);
             }
           }}
         >
-          <div className="space-y-1.5">
-            <Label htmlFor="ttitle">Title</Label>
-            <Input id="ttitle" value={title} onChange={(e) => setTitle(e.target.value)} required />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="tnotes">Notes</Label>
-            <ContentProtection
-              disabled={llmBusy}
-              key={task?.id || "new-task"}
-              profile={ws.data?.profile}
-              kind="task"
-              id={task?.id}
-              encrypted={Boolean(task?.encrypted)}
-              enabled={encryptContent}
-              unlocked={unlocked}
-              onToggle={setEncryptContent}
-              onUnlock={(body) => {
-                setNotes(body);
-                setBaseline(body);
-                setUnlocked(true);
-              }}
-              onLock={() => {
-                if (
-                  notes !== baseline &&
-                  !window.confirm("Discard unsaved changes and lock this task?")
-                )
-                  return;
-                setNotes("");
-                setBaseline("");
-                setUnlocked(false);
-              }}
-            />
-            <Textarea
-              id="tnotes"
-              value={notes}
-              disabled={llmBusy || (Boolean(task?.encrypted) && !unlocked)}
-              placeholder={
-                task?.encrypted && !unlocked ? "Encrypted content — unlock to view" : "Task content"
-              }
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+          {submissionError && (
+            <p role="alert" className="text-sm text-destructive">
+              {submissionError} Retry when ready.
+            </p>
+          )}
+          <fieldset disabled={busy} className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="tpri">Priority</Label>
-              <select
-                id="tpri"
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-              >
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="tdue">Due</Label>
+              <Label htmlFor="ttitle">Title</Label>
               <Input
-                id="tdue"
-                type="datetime-local"
-                value={dueAt}
-                onChange={(e) => setDueAt(e.target.value)}
+                id="ttitle"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
               />
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2 pt-2">
-            <LLMEditButton
-              title={title}
-              body={notes}
-              kind="spellcheck"
-              label="Correct spelling with LLM"
-              disabled={llmBusy || (Boolean(task?.encrypted) && !unlocked)}
-              onBusyChange={setLLMBusy}
-              onEdited={setNotes}
-            />
-            {task?.id && (
-              <Button
-                type="button"
-                variant="ghost"
+            <div className="space-y-1.5">
+              <Label htmlFor="tnotes">Notes</Label>
+              <ContentProtection
                 disabled={llmBusy}
-                onClick={async () => {
-                  await deleteTask({
-                    data: task.id!,
-                    headers: captcha ? { "x-turnstile-response": captcha } : undefined,
-                  });
-                  onClose();
-                  onSaved();
+                key={task?.id || "new-task"}
+                profile={ws.data?.profile}
+                kind="task"
+                id={task?.id}
+                encrypted={Boolean(task?.encrypted)}
+                enabled={encryptContent}
+                unlocked={unlocked}
+                onToggle={setEncryptContent}
+                onUnlock={(body) => {
+                  setNotes(body);
+                  setBaseline(body);
+                  setUnlocked(true);
                 }}
-              >
-                Delete
+                onLock={() => {
+                  if (
+                    notes !== baseline &&
+                    !window.confirm("Discard unsaved changes and lock this task?")
+                  )
+                    return;
+                  setNotes("");
+                  setBaseline("");
+                  setUnlocked(false);
+                }}
+              />
+              <Textarea
+                id="tnotes"
+                value={notes}
+                disabled={llmBusy || (Boolean(task?.encrypted) && !unlocked)}
+                placeholder={
+                  task?.encrypted && !unlocked
+                    ? "Encrypted content — unlock to view"
+                    : "Task content"
+                }
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="tpri">Priority</Label>
+                <select
+                  id="tpri"
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                >
+                  {PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="tdue">Due</Label>
+                <Input
+                  id="tdue"
+                  type="datetime-local"
+                  value={dueAt}
+                  onChange={(e) => setDueAt(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 pt-2">
+              <LLMEditButton
+                title={title}
+                body={notes}
+                kind="spellcheck"
+                label="Correct spelling with LLM"
+                disabled={llmBusy || (Boolean(task?.encrypted) && !unlocked)}
+                onBusyChange={setLLMBusy}
+                onEdited={setNotes}
+              />
+              {task?.id && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={llmBusy}
+                  onClick={async () => {
+                    if (busy || !window.confirm("Delete this task and any unsaved changes?"))
+                      return;
+                    setBusy(true);
+                    setSubmissionError("");
+                    try {
+                      const captcha = await verify("task-manage", "Deleting task");
+                      await deleteTask({
+                        data: task.id!,
+                        headers: { "x-turnstile-response": captcha },
+                      });
+                      onClose();
+                      onSaved();
+                    } catch (error) {
+                      setSubmissionError(
+                        error instanceof Error
+                          ? error.message
+                          : "Submission failed. Your draft is unchanged.",
+                      );
+                      toast.error(error instanceof Error ? error.message : "Could not delete task");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  Delete
+                </Button>
+              )}
+              <Button type="submit" disabled={llmBusy} className="ml-auto">
+                Save
               </Button>
-            )}
-            <Button type="submit" disabled={llmBusy} className="ml-auto">
-              Save
-            </Button>
-          </div>
-          <TurnstileField action="task-manage" resetKey={captchaKey} onToken={setCaptcha} />
+            </div>
+          </fieldset>
         </form>
       </DialogContent>
     </Dialog>

@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Note } from "@/lib/mamyda/types";
 import { useWritingDraft } from "@/components/writing-draft";
-import { TurnstileField, type TurnstileStatus } from "@/components/turnstile-field";
+import { useVerifiedToken } from "@/components/submission-verification";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { LLMEditButton } from "@/components/llm-edit-button";
@@ -46,9 +46,7 @@ function NotesPage() {
     setEncryptContent(Boolean(current?.encrypted));
     setUnlocked(false);
   }, [current?.id, current?.encrypted]);
-  const [captcha, setCaptcha] = useState("");
-  const [captchaStatus, setCaptchaStatus] = useState<TurnstileStatus>("unavailable");
-  const [captchaKey, setCaptchaKey] = useState(0);
+  const verify = useVerifiedToken();
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -89,6 +87,7 @@ function NotesPage() {
     const encryption = encryptContent
       ? await encryptPrivateContent(draft, ws.data?.profile.vaultPublicKey)
       : undefined;
+    const captcha = await verify("note-save", "Saving note");
     const next = await saveNote({
       data: {
         id: current?.id || undefined,
@@ -110,9 +109,6 @@ function NotesPage() {
     setCurrent(saved);
     setDraft(saved.body);
     setUnlocked(false);
-    setCaptcha("");
-    setCaptchaStatus("loading");
-    setCaptchaKey((value) => value + 1);
     void list.refetch();
     toast.success("Note saved");
   }
@@ -366,12 +362,7 @@ function NotesPage() {
                   ))}
               </select>
             </div>
-            <TurnstileField
-              action="note-save"
-              resetKey={captchaKey}
-              onToken={setCaptcha}
-              onStatus={setCaptchaStatus}
-            />
+
             <div className="mt-4 flex flex-wrap gap-2">
               <LLMEditButton
                 title={titleDraft}
@@ -404,9 +395,7 @@ function NotesPage() {
                   protection.saving ||
                   llmBusy ||
                   (Boolean(current.encrypted) && !unlocked) ||
-                  protection.recoveryPending ||
-                  captchaStatus !== "verified" ||
-                  !captcha
+                  protection.recoveryPending
                 }
                 onClick={() => void protection.save()}
               >

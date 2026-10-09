@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { TurnstileField, type TurnstileStatus } from "@/components/turnstile-field";
+import { useVerifiedToken } from "@/components/submission-verification";
 import { createCalendarEvent, updateCalendarEvent } from "@/lib/mamyda/calendar";
 import type { CalendarEvent } from "@/lib/mamyda/types";
 
@@ -45,9 +45,7 @@ function CalendarPage() {
     projectId: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState("");
-  const [captchaStatus, setCaptchaStatus] = useState<TurnstileStatus>("unavailable");
-  const [captchaKey, setCaptchaKey] = useState(0);
+  const verify = useVerifiedToken();
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(cursor, i)), [cursor]);
 
   useEffect(() => {
@@ -97,9 +95,6 @@ function CalendarPage() {
       toast.error("Events from subscription feeds are read-only.");
       return;
     }
-    setCaptchaToken("");
-    setCaptchaStatus("loading");
-    setCaptchaKey((value) => value + 1);
     setEditor({
       eventId: event.id,
       sourceId: event.sourceId,
@@ -126,9 +121,6 @@ function CalendarPage() {
     start.setMinutes(0, 0, 0);
     start.setHours(start.getHours() + 1);
     const end = new Date(start.getTime() + 60 * 60_000);
-    setCaptchaToken("");
-    setCaptchaStatus("loading");
-    setCaptchaKey((value) => value + 1);
     setEditor({
       sourceId: writableSources[0]!.id,
       title: "",
@@ -143,10 +135,6 @@ function CalendarPage() {
 
   async function saveEvent() {
     if (!editor || saving) return;
-    if (!captchaToken || captchaStatus !== "verified") {
-      toast.error("Complete the security check before saving.");
-      return;
-    }
     setSaving(true);
     try {
       const toIso = (value: string) =>
@@ -162,6 +150,7 @@ function CalendarPage() {
         allDay: editor.allDay,
         projectId: editor.projectId || null,
       };
+      const captchaToken = await verify("calendar-event-write", "Saving calendar event");
       if (editor.eventId) {
         await updateCalendarEvent({
           data: { ...data, eventId: editor.eventId },
@@ -179,9 +168,6 @@ function CalendarPage() {
           ? error.message
           : "Could not save the event. Your details are still here; retry.",
       );
-      setCaptchaToken("");
-      setCaptchaStatus("loading");
-      setCaptchaKey((value) => value + 1);
     } finally {
       setSaving(false);
     }
@@ -531,12 +517,7 @@ function CalendarPage() {
                   onChange={(e) => setEditor({ ...editor, description: e.target.value })}
                 />
               </div>
-              <TurnstileField
-                action="calendar-event-write"
-                resetKey={captchaKey}
-                onToken={setCaptchaToken}
-                onStatus={setCaptchaStatus}
-              />
+
               <p className="text-xs text-muted-foreground">
                 Times use your device’s local timezone. Subscription (ICS) calendars are read-only.
               </p>
@@ -544,12 +525,7 @@ function CalendarPage() {
                 <Button variant="ghost" disabled={saving} onClick={() => setEditor(null)}>
                   Cancel
                 </Button>
-                <Button
-                  disabled={
-                    saving || captchaStatus !== "verified" || !captchaToken || !editor.title.trim()
-                  }
-                  onClick={() => void saveEvent()}
-                >
+                <Button disabled={saving || !editor.title.trim()} onClick={() => void saveEvent()}>
                   {saving ? "Saving…" : "Save event"}
                 </Button>
               </div>

@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { TurnstileField } from "@/components/turnstile-field";
+import { useVerifiedToken } from "@/components/submission-verification";
 import { toast } from "sonner";
 import { LLMEditButton } from "@/components/llm-edit-button";
 import { TranscriptionSettings } from "@/components/transcription-settings";
@@ -18,9 +18,9 @@ export function LLMSettingsPanel() {
     [apiKey, setKey] = useState(""),
     [maxTokens, setMax] = useState(2048),
     [clearKey, setClear] = useState(false);
-  const [captcha, setCaptcha] = useState(""),
-    [reset, setReset] = useState(0),
-    [busy, setBusy] = useState(false);
+  const verify = useVerifiedToken();
+  const [busy, setBusy] = useState(false);
+  const [submissionError, setSubmissionError] = useState("");
   useEffect(() => {
     if (query.data) {
       setProvider(query.data.provider);
@@ -60,7 +60,9 @@ export function LLMSettingsPanel() {
           e.preventDefault();
           if (busy) return;
           setBusy(true);
+          setSubmissionError("");
           try {
+            const captcha = await verify("llm-settings", "Saving LLM settings");
             await saveLLMSettings({
               data: { provider, model, enabled, apiKey, maxTokens, clearKey },
               headers: { "x-turnstile-response": captcha },
@@ -70,14 +72,22 @@ export function LLMSettingsPanel() {
             await query.refetch();
             toast.success("LLM settings saved; model access has not been tested");
           } catch (error) {
+            setSubmissionError(
+              error instanceof Error
+                ? error.message
+                : "Submission failed. Your draft is unchanged.",
+            );
             toast.error(error instanceof Error ? error.message : "Could not save LLM settings");
           } finally {
             setBusy(false);
-            setCaptcha("");
-            setReset((n) => n + 1);
           }
         }}
       >
+        {submissionError && (
+          <p role="alert" className="text-sm text-destructive">
+            {submissionError} Retry when ready.
+          </p>
+        )}
         <fieldset disabled={busy} className="space-y-4">
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -166,8 +176,7 @@ export function LLMSettingsPanel() {
               onChange={(e) => setMax(Number(e.target.value))}
             />
           </div>
-          <TurnstileField action="llm-settings" resetKey={reset} onToken={setCaptcha} />
-          <Button type="submit" disabled={!captcha || busy}>
+          <Button type="submit" disabled={busy}>
             {busy ? "Saving…" : "Save LLM settings"}
           </Button>
         </fieldset>
