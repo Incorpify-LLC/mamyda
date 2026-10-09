@@ -66,9 +66,12 @@ export function ProjectContextPicker({ disabled = false }: { disabled?: boolean 
       className="mb-4 min-w-0 rounded-lg border border-border bg-card p-3"
     >
       <p className="mb-2 text-xs font-medium text-muted-foreground">
-        Board context · {context.project?.name ?? context.client?.name ?? "All projects"}
+        Board context ·{" "}
+        {context.loading
+          ? "Loading projects…"
+          : (context.project?.name ?? context.client?.name ?? "All projects")}
       </p>
-      {context.invalid && (
+      {context.invalid && !context.loading && !context.error && (
         <p role="alert" className="mb-2 text-sm text-destructive">
           This client or project is unavailable or archived. Choose an active project below; no
           replacement was selected.
