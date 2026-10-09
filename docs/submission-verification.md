@@ -34,4 +34,12 @@ Real client/project dialogs verify no idle widgets, one active widget, automatic
 
 A non-mutating direct Siteverify dummy-token probe returned the expected `invalid-input-response` for the existing server secret. The Spin helper was not used because its `jq '.success // "missing"'` expression incorrectly treats a legitimate false result as missing. The direct probe does not prove human challenge completion or widget hostname metadata.
 
-No commit, push or deployment performed for this increment. Before closing #18: deploy with approval, manually test a real human challenge and cancellation on desktop/mobile, and confirm signed-in saves end-to-end. CI dependency remediation remains tracked in #22.
+## Deployment
+
+Released with user approval as `submission-verification-20261009-18`, source commit `087bdac`, ARM64 image `1705b29c4415`. Candidate and public live health/release checks passed. Public smoke confirmed protected routes/assets and rejection of anonymous uploads and missing-CAPTCHA OTP requests. Only the pi03 app container was replaced; no migrations were required, and the database, secrets, worker and tunnel were preserved.
+
+In authenticated Chrome, opening a new task mounted no widget. Offline submission failed visibly; cancelling returned to the intact title, body and priority with no widget left mounted. Retrying online mounted the real Cloudflare human checkbox. No record was written before solving it. Human completion, automatic-save confirmation, mobile verification and temporary-record cleanup remain pending; #18 remains open until these checks finish.
+
+Rollback image: `mamyda-feedback-rollback:submission-verification-20261009-18-app`. Private source/database snapshots are on pi03 under `/home/sanjayu/mamyda-rollbacks/submission-verification-20261009-18/`. Roll back code without restoring the database unless separately authorized.
+
+GitHub CI run 37947020645 stopped at the unchanged dependency audit. The 170 local app tests, type checking, browser regression checks and production build passed; this is not green CI. Dependency remediation remains tracked in #22.
