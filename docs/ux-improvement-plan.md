@@ -8,7 +8,7 @@ The authenticated review and user decisions define this sequence:
 4. [#20](https://github.com/Incorpify-LLC/mamyda/issues/20): progressively disclosed editors and clear current Vault capabilities.
 5. [#21](https://github.com/Incorpify-LLC/mamyda/issues/21): integration status, sync clarity and quieter settings without alert dispatch on read.
 
-Increment #18 is deployed; see [submission verification](submission-verification.md). It remains open pending live human challenge completion and final signed-in save/mobile checks.
+Increment #18 is deployed and complete; see [submission verification](submission-verification.md). Signed-in desktop and mobile saves passed with real human challenge completion. The temporary test task was deleted through the protected UI, and cleanup was confirmed in the database.
 
 ## First increment: deployed
 
@@ -36,4 +36,4 @@ Released with user approval as `board-ux-20261009-17` on pi03; application sourc
 
 Only the app container was replaced; the database, secrets, worker and tunnel were preserved. No migration was required. Image: `a94f41192b9a`. Rollback image: `mamyda-feedback-rollback:board-ux-20261009-17-app`; private source/database snapshots: `/home/sanjayu/mamyda-rollbacks/board-ux-20261009-17/` on pi03. Roll back code without restoring the database unless separately authorized.
 
-GitHub CI run 37927521439 failed at the dependency audit, before the other checks: the unchanged lockfile contains high/critical transitive findings. Local app tests, type checking, browser checks and the production build passed; this is not a claim of green CI. Dependency remediation is a separate follow-up. #17 is complete; #18–#21 remain open.
+GitHub CI run 37927521439 failed at the dependency audit, before the other checks: the unchanged lockfile contains high/critical transitive findings. Local app tests, type checking, browser checks and the production build passed; this is not a claim of green CI. Dependency remediation is tracked separately in #22. #17 and #18 are complete; #19–#21 remain open.
