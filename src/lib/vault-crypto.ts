@@ -1,4 +1,5 @@
 import * as openpgp from "openpgp";
+import { validateAssetSize } from "@/lib/vault-assets";
 
 const SESSION_KEY = "mamyda.vault.priv";
 let unlockedKey: openpgp.PrivateKey | null = null;
@@ -56,6 +57,34 @@ export async function decryptNote(
     decryptionKeys: privateKey,
   });
   return result.data.toString();
+}
+
+/** Encrypt raw bytes without base64 or UTF-8 conversion; legacy notes stay armored. */
+export async function encryptAsset(
+  plaintext: Uint8Array,
+  publicArmored: string,
+): Promise<Uint8Array> {
+  validateAssetSize(plaintext.byteLength);
+  const publicKey = await openpgp.readKey({ armoredKey: publicArmored });
+  return openpgp.encrypt({
+    message: await openpgp.createMessage({ binary: plaintext }),
+    encryptionKeys: publicKey,
+    format: "binary",
+  });
+}
+
+/** OpenPGP verifies integrity before resolving with the decrypted bytes. */
+export async function decryptAsset(
+  ciphertext: Uint8Array,
+  privateKey: openpgp.PrivateKey,
+): Promise<Uint8Array> {
+  const result = await openpgp.decrypt({
+    message: await openpgp.readMessage({ binaryMessage: ciphertext }),
+    decryptionKeys: privateKey,
+    format: "binary",
+  });
+  validateAssetSize(result.data.byteLength);
+  return result.data;
 }
 
 /** Keep decrypted private material in memory only, never Web Storage. */

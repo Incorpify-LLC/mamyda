@@ -4,6 +4,13 @@ const id = z.string().trim().min(1).max(200);
 const title = z.string().max(500);
 const body = z.string().max(100_000);
 const link = id.nullish();
+const encryption = z
+  .object({
+    ciphertext: z.string().min(1).max(500_000),
+    fingerprint: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
+  })
+  .strict()
+  .optional();
 export const idInput = id;
 export const clientInput = z.object({
   id: id.optional(),
@@ -19,6 +26,7 @@ export const projectInput = z.object({
   description: body.optional(),
 });
 export const taskInput = z.object({
+  encryption,
   id: id.optional(),
   projectId: id,
   title: title.trim().min(1),
@@ -49,12 +57,19 @@ export const minuteInput = z.object({
   eventId: link,
   projectId: link,
 });
-export const noteInput = z.object({
-  id: id.optional(),
-  body,
-  title: title.optional(),
-  projectId: link,
-});
+export const noteInput = z
+  .object({
+    encryption,
+    tags: z.array(z.string().min(1).max(100)).max(100).optional(),
+    id: id.optional(),
+    body,
+    title: title.optional(),
+    projectId: link,
+  })
+  .refine(
+    (data) => !data.encryption || (Boolean(data.title?.trim()) && Array.isArray(data.tags)),
+    "Encrypted notes require a visible title and tags",
+  );
 export const calendarEventWriteInput = z.object({
   sourceId: id,
   eventId: id.optional(),

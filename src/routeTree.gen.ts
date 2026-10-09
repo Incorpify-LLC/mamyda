@@ -14,6 +14,9 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppBoardRouteImport } from './routes/_app/board'
 import { Route as AppCalendarRouteImport } from './routes/_app/calendar'
+import { Route as AppChatRouteImport } from './routes/_app/chat'
+import { Route as AppClientsRouteImport } from './routes/_app/clients'
+import { Route as AppFilesRouteImport } from './routes/_app/files'
 import { Route as AppMinutesRouteImport } from './routes/_app/minutes'
 import { Route as AppNotesRouteImport } from './routes/_app/notes'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
@@ -26,6 +29,10 @@ import { Route as ApiInternalAlertsRouteImport } from './routes/api/internal/ale
 import { Route as ApiCalendarGoogleCallbackRouteImport } from './routes/api/calendar/google/callback'
 import { Route as ApiCalendarMicrosoftCallbackRouteImport } from './routes/api/calendar/microsoft/callback'
 import { Route as ApiCalendarOutlookCallbackRouteImport } from './routes/api/calendar/outlook/callback'
+import { Route as ApiFilesUploadsIdRouteImport } from './routes/api/files/uploads/$id'
+import { Route as ApiMediaUploadsIdRouteImport } from './routes/api/media/uploads/$id'
+import { Route as ApiVaultAssetsIdRouteImport } from './routes/api/vault/assets/$id'
+import { Route as ApiVaultUploadsIdRouteImport } from './routes/api/vault/uploads/$id'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -49,6 +56,21 @@ const AppBoardRoute = AppBoardRouteImport.update({
 const AppCalendarRoute = AppCalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppChatRoute = AppChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppClientsRoute = AppClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFilesRoute = AppFilesRouteImport.update({
+  id: '/files',
+  path: '/files',
   getParentRoute: () => AppRoute,
 } as any)
 const AppMinutesRoute = AppMinutesRouteImport.update({
@@ -114,12 +136,35 @@ const ApiCalendarOutlookCallbackRoute =
     path: '/api/calendar/outlook/callback',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiFilesUploadsIdRoute = ApiFilesUploadsIdRouteImport.update({
+  id: '/api/files/uploads/$id',
+  path: '/api/files/uploads/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMediaUploadsIdRoute = ApiMediaUploadsIdRouteImport.update({
+  id: '/api/media/uploads/$id',
+  path: '/api/media/uploads/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiVaultAssetsIdRoute = ApiVaultAssetsIdRouteImport.update({
+  id: '/api/vault/assets/$id',
+  path: '/api/vault/assets/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiVaultUploadsIdRoute = ApiVaultUploadsIdRouteImport.update({
+  id: '/api/vault/uploads/$id',
+  path: '/api/vault/uploads/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/board': typeof AppBoardRoute
   '/calendar': typeof AppCalendarRoute
+  '/chat': typeof AppChatRoute
+  '/clients': typeof AppClientsRoute
+  '/files': typeof AppFilesRoute
   '/minutes': typeof AppMinutesRoute
   '/notes': typeof AppNotesRoute
   '/settings': typeof AppSettingsRoute
@@ -132,11 +177,18 @@ export interface FileRoutesByFullPath {
   '/api/calendar/google/callback': typeof ApiCalendarGoogleCallbackRoute
   '/api/calendar/microsoft/callback': typeof ApiCalendarMicrosoftCallbackRoute
   '/api/calendar/outlook/callback': typeof ApiCalendarOutlookCallbackRoute
+  '/api/files/uploads/$id': typeof ApiFilesUploadsIdRoute
+  '/api/media/uploads/$id': typeof ApiMediaUploadsIdRoute
+  '/api/vault/assets/$id': typeof ApiVaultAssetsIdRoute
+  '/api/vault/uploads/$id': typeof ApiVaultUploadsIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/board': typeof AppBoardRoute
   '/calendar': typeof AppCalendarRoute
+  '/chat': typeof AppChatRoute
+  '/clients': typeof AppClientsRoute
+  '/files': typeof AppFilesRoute
   '/minutes': typeof AppMinutesRoute
   '/notes': typeof AppNotesRoute
   '/settings': typeof AppSettingsRoute
@@ -150,6 +202,10 @@ export interface FileRoutesByTo {
   '/api/calendar/google/callback': typeof ApiCalendarGoogleCallbackRoute
   '/api/calendar/microsoft/callback': typeof ApiCalendarMicrosoftCallbackRoute
   '/api/calendar/outlook/callback': typeof ApiCalendarOutlookCallbackRoute
+  '/api/files/uploads/$id': typeof ApiFilesUploadsIdRoute
+  '/api/media/uploads/$id': typeof ApiMediaUploadsIdRoute
+  '/api/vault/assets/$id': typeof ApiVaultAssetsIdRoute
+  '/api/vault/uploads/$id': typeof ApiVaultUploadsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -157,6 +213,9 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_app/board': typeof AppBoardRoute
   '/_app/calendar': typeof AppCalendarRoute
+  '/_app/chat': typeof AppChatRoute
+  '/_app/clients': typeof AppClientsRoute
+  '/_app/files': typeof AppFilesRoute
   '/_app/minutes': typeof AppMinutesRoute
   '/_app/notes': typeof AppNotesRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -170,6 +229,10 @@ export interface FileRoutesById {
   '/api/calendar/google/callback': typeof ApiCalendarGoogleCallbackRoute
   '/api/calendar/microsoft/callback': typeof ApiCalendarMicrosoftCallbackRoute
   '/api/calendar/outlook/callback': typeof ApiCalendarOutlookCallbackRoute
+  '/api/files/uploads/$id': typeof ApiFilesUploadsIdRoute
+  '/api/media/uploads/$id': typeof ApiMediaUploadsIdRoute
+  '/api/vault/assets/$id': typeof ApiVaultAssetsIdRoute
+  '/api/vault/uploads/$id': typeof ApiVaultUploadsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -178,6 +241,9 @@ export interface FileRouteTypes {
     | '/login'
     | '/board'
     | '/calendar'
+    | '/chat'
+    | '/clients'
+    | '/files'
     | '/minutes'
     | '/notes'
     | '/settings'
@@ -190,11 +256,18 @@ export interface FileRouteTypes {
     | '/api/calendar/google/callback'
     | '/api/calendar/microsoft/callback'
     | '/api/calendar/outlook/callback'
+    | '/api/files/uploads/$id'
+    | '/api/media/uploads/$id'
+    | '/api/vault/assets/$id'
+    | '/api/vault/uploads/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/board'
     | '/calendar'
+    | '/chat'
+    | '/clients'
+    | '/files'
     | '/minutes'
     | '/notes'
     | '/settings'
@@ -208,12 +281,19 @@ export interface FileRouteTypes {
     | '/api/calendar/google/callback'
     | '/api/calendar/microsoft/callback'
     | '/api/calendar/outlook/callback'
+    | '/api/files/uploads/$id'
+    | '/api/media/uploads/$id'
+    | '/api/vault/assets/$id'
+    | '/api/vault/uploads/$id'
   id:
     | '__root__'
     | '/_app'
     | '/login'
     | '/_app/board'
     | '/_app/calendar'
+    | '/_app/chat'
+    | '/_app/clients'
+    | '/_app/files'
     | '/_app/minutes'
     | '/_app/notes'
     | '/_app/settings'
@@ -227,6 +307,10 @@ export interface FileRouteTypes {
     | '/api/calendar/google/callback'
     | '/api/calendar/microsoft/callback'
     | '/api/calendar/outlook/callback'
+    | '/api/files/uploads/$id'
+    | '/api/media/uploads/$id'
+    | '/api/vault/assets/$id'
+    | '/api/vault/uploads/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -240,6 +324,10 @@ export interface RootRouteChildren {
   ApiCalendarGoogleCallbackRoute: typeof ApiCalendarGoogleCallbackRoute
   ApiCalendarMicrosoftCallbackRoute: typeof ApiCalendarMicrosoftCallbackRoute
   ApiCalendarOutlookCallbackRoute: typeof ApiCalendarOutlookCallbackRoute
+  ApiFilesUploadsIdRoute: typeof ApiFilesUploadsIdRoute
+  ApiMediaUploadsIdRoute: typeof ApiMediaUploadsIdRoute
+  ApiVaultAssetsIdRoute: typeof ApiVaultAssetsIdRoute
+  ApiVaultUploadsIdRoute: typeof ApiVaultUploadsIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -277,6 +365,27 @@ declare module '@tanstack/react-router' {
       path: '/calendar'
       fullPath: '/calendar'
       preLoaderRoute: typeof AppCalendarRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/chat': {
+      id: '/_app/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof AppChatRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clients': {
+      id: '/_app/clients'
+      path: '/clients'
+      fullPath: '/clients'
+      preLoaderRoute: typeof AppClientsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/files': {
+      id: '/_app/files'
+      path: '/files'
+      fullPath: '/files'
+      preLoaderRoute: typeof AppFilesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/minutes': {
@@ -363,12 +472,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCalendarOutlookCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/files/uploads/$id': {
+      id: '/api/files/uploads/$id'
+      path: '/api/files/uploads/$id'
+      fullPath: '/api/files/uploads/$id'
+      preLoaderRoute: typeof ApiFilesUploadsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/media/uploads/$id': {
+      id: '/api/media/uploads/$id'
+      path: '/api/media/uploads/$id'
+      fullPath: '/api/media/uploads/$id'
+      preLoaderRoute: typeof ApiMediaUploadsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/vault/assets/$id': {
+      id: '/api/vault/assets/$id'
+      path: '/api/vault/assets/$id'
+      fullPath: '/api/vault/assets/$id'
+      preLoaderRoute: typeof ApiVaultAssetsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/vault/uploads/$id': {
+      id: '/api/vault/uploads/$id'
+      path: '/api/vault/uploads/$id'
+      fullPath: '/api/vault/uploads/$id'
+      preLoaderRoute: typeof ApiVaultUploadsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 interface AppRouteChildren {
   AppBoardRoute: typeof AppBoardRoute
   AppCalendarRoute: typeof AppCalendarRoute
+  AppChatRoute: typeof AppChatRoute
+  AppClientsRoute: typeof AppClientsRoute
+  AppFilesRoute: typeof AppFilesRoute
   AppMinutesRoute: typeof AppMinutesRoute
   AppNotesRoute: typeof AppNotesRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -379,6 +519,9 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppBoardRoute: AppBoardRoute,
   AppCalendarRoute: AppCalendarRoute,
+  AppChatRoute: AppChatRoute,
+  AppClientsRoute: AppClientsRoute,
+  AppFilesRoute: AppFilesRoute,
   AppMinutesRoute: AppMinutesRoute,
   AppNotesRoute: AppNotesRoute,
   AppSettingsRoute: AppSettingsRoute,
@@ -399,6 +542,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCalendarGoogleCallbackRoute: ApiCalendarGoogleCallbackRoute,
   ApiCalendarMicrosoftCallbackRoute: ApiCalendarMicrosoftCallbackRoute,
   ApiCalendarOutlookCallbackRoute: ApiCalendarOutlookCallbackRoute,
+  ApiFilesUploadsIdRoute: ApiFilesUploadsIdRoute,
+  ApiMediaUploadsIdRoute: ApiMediaUploadsIdRoute,
+  ApiVaultAssetsIdRoute: ApiVaultAssetsIdRoute,
+  ApiVaultUploadsIdRoute: ApiVaultUploadsIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

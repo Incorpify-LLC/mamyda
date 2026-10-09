@@ -86,6 +86,7 @@ export function mapProject(row: Record<string, unknown>): Project {
 
 export function mapTask(row: Record<string, unknown>): Task {
   return {
+    encrypted: Boolean(row.content_object_key),
     id: String(row.id),
     projectId: String(row.project_id),
     title: String(row.title),
@@ -153,6 +154,7 @@ export function mapMinute(row: Record<string, unknown>): Minute {
 
 export function mapNote(row: Record<string, unknown>, tags: string[] = []): Note {
   return {
+    encrypted: Boolean(row.content_object_key),
     id: String(row.id),
     projectId: str(row.project_id),
     title: String(row.title),

@@ -19,11 +19,15 @@ export function TurnstileField({
   resetKey,
   onToken,
   onStatus,
+  size = "normal",
+  refreshExpired = "auto",
 }: {
   action: string;
   resetKey: number;
   onToken: (token: string) => void;
   onStatus?: (status: TurnstileStatus) => void;
+  size?: "normal" | "compact" | "flexible";
+  refreshExpired?: "auto" | "manual";
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const widgetId = useRef("");
@@ -40,17 +44,26 @@ export function TurnstileField({
   );
 
   useEffect(() => {
+    let active = true;
     void turnstileSiteKey()
       .then((key) => {
+        if (!active) return;
         setSiteKey(key);
         if (!key) updateStatus("unavailable");
       })
-      .catch(() => updateStatus("error"));
+      .catch(() => {
+        if (active) updateStatus("error");
+      });
+    return () => {
+      active = false;
+    };
   }, [updateStatus]);
 
   useEffect(() => {
     if (!siteKey || !holder.current) return;
+    let active = true;
     const render = () => {
+      if (!active) return;
       const turnstile = api();
       if (!turnstile || !holder.current) {
         updateStatus("error");
@@ -58,54 +71,68 @@ export function TurnstileField({
       }
       holder.current.replaceChildren();
       try {
+        updateStatus("ready");
         widgetId.current = turnstile.render(holder.current, {
           sitekey: siteKey,
           action,
+          size,
+          "refresh-expired": refreshExpired,
           callback: (token: string) => {
+            if (!active) return;
             onToken(token);
             updateStatus("verified");
           },
           "error-callback": () => {
+            if (!active) return;
             onToken("");
             updateStatus("error");
           },
           "expired-callback": () => {
+            if (!active) return;
             onToken("");
             updateStatus("expired");
           },
         });
-        updateStatus("ready");
       } catch {
         updateStatus("error");
       }
+    };
+    const loadError = () => {
+      if (!active) return;
+      onToken("");
+      updateStatus("error");
     };
     let existing = document.querySelector<HTMLScriptElement>("script[data-turnstile]");
     if (existing?.dataset.failed === "1") {
       existing.remove();
       existing = null;
     }
-    if (existing && api()) render();
-    else if (!existing) {
-      const script = document.createElement("script");
-      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-      script.async = true;
-      script.defer = true;
-      script.dataset.turnstile = "1";
-      script.onload = render;
-      script.onerror = () => {
-        script.dataset.failed = "1";
-        updateStatus("error");
-      };
-      document.head.appendChild(script);
-    } else {
+    if (api()) render();
+    else {
+      if (!existing) {
+        const script = document.createElement("script");
+        script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+        script.async = true;
+        script.defer = true;
+        script.dataset.turnstile = "1";
+        script.onerror = () => {
+          script.dataset.failed = "1";
+        };
+        existing = script;
+      }
       existing.addEventListener("load", render, { once: true });
+      existing.addEventListener("error", loadError, { once: true });
+      if (!existing.isConnected) document.head.appendChild(existing);
     }
     return () => {
+      active = false;
+      existing?.removeEventListener("load", render);
+      existing?.removeEventListener("error", loadError);
       const turnstile = api();
       if (widgetId.current && turnstile) turnstile.remove(widgetId.current);
       widgetId.current = "";
     };
-  }, [action, onToken, resetKey, retryCount, siteKey, updateStatus]);
+  }, [action, onToken, resetKey, retryCount, siteKey, updateStatus, size, refreshExpired]);
 
   return (
     <div className="space-y-1" data-action="turnstile-spin-v2">
@@ -128,8 +155,7 @@ export function TurnstileField({
             className="font-medium text-foreground underline underline-offset-2"
             onClick={() => {
               onToken("");
-              if (widgetId.current) api()?.reset(widgetId.current);
-              updateStatus("ready");
+              updateStatus("loading");
               setRetryCount((count) => count + 1);
             }}
           >

@@ -326,19 +326,41 @@ export const upsertTask = createServerFn({ method: "POST" })
       throw new Error("Invalid priority");
     }
     const labels = JSON.stringify(data.labels ?? []);
+    const existing = data.id
+      ? (
+          await sql<{
+            content_object_key: string | null;
+            content_key_fingerprint: string | null;
+          }>`select content_object_key,content_key_fingerprint from tasks where id=${data.id} and user_id=${context.userId}`
+        )[0]
+      : undefined;
+    if (data.id && !existing) throw new Error("Task not found");
+    const { assertContentWrite } = await import("@/lib/content-privacy");
+    assertContentWrite(data.notes, Boolean(data.encryption), Boolean(existing?.content_object_key));
+    const objectKey = data.encryption
+      ? await (
+          await import("./private-content.server")
+        ).storePrivateContent(sql, context.userId, data.encryption)
+      : (existing?.content_object_key ?? null);
+    const fingerprint = data.encryption?.fingerprint ?? existing?.content_key_fingerprint ?? null;
     if (data.id) {
-      await sql`
+      const changed = await sql`
         update tasks set
           project_id = ${data.projectId},
           title = ${title},
-          notes = ${data.notes ?? null},
+          notes = ${objectKey ? null : (data.notes ?? null)},
+          content_object_key = ${objectKey},
+          content_key_fingerprint = ${fingerprint},
           column_id = ${columnId!},
           priority = ${data.priority ?? "normal"},
           due_at = ${data.dueAt ?? null},
           labels = ${labels},
           updated_at = now()
         where id = ${data.id} and user_id = ${context.userId}
+          and content_object_key is not distinct from ${existing?.content_object_key ?? null}
+        returning id
       `;
+      if (!changed[0]) throw new Error("Task content changed; reload before saving");
     } else {
       const max = await sql<{ m: number | null }>`
         select max(position) as m from tasks
@@ -346,8 +368,8 @@ export const upsertTask = createServerFn({ method: "POST" })
       `;
       const position = (max[0]?.m ?? 0) + 1;
       await sql`
-        insert into tasks (id, user_id, project_id, title, notes, column_id, priority, due_at, labels, position)
-        values (${nid()}, ${context.userId}, ${data.projectId}, ${title}, ${data.notes ?? null}, ${columnId!}, ${data.priority ?? "normal"}, ${data.dueAt ?? null}, ${labels}, ${position})
+        insert into tasks (id, user_id, project_id, title, notes, column_id, priority, due_at, labels, position,content_object_key,content_key_fingerprint)
+        values (${nid()}, ${context.userId}, ${data.projectId}, ${title}, ${objectKey ? null : (data.notes ?? null)}, ${columnId!}, ${data.priority ?? "normal"}, ${data.dueAt ?? null}, ${labels}, ${position},${objectKey},${fingerprint})
       `;
     }
     return loadWorkspace(context.userId);

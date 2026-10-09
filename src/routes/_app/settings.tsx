@@ -15,8 +15,15 @@ import { sendTestNotification } from "@/lib/mamyda/alerts";
 import { formatDay, formatTime } from "@/lib/time";
 import { Bell, CalendarDays, Settings2 } from "lucide-react";
 import { toast } from "sonner";
+import { LLMSettingsPanel } from "@/components/llm-settings";
 
 export const Route = createFileRoute("/_app/settings")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...(typeof search.section === "string" &&
+    ["calendars", "alerts", "workspace", "llm"].includes(search.section)
+      ? { section: search.section }
+      : {}),
+  }),
   component: SettingsPage,
 });
 
@@ -55,7 +62,7 @@ function SettingsPage() {
     link: string;
   } | null>(null);
   const [connectTarget, setConnectTarget] = useState<"google" | "outlook" | null>(null);
-  const [section, setSection] = useState<"calendars" | "alerts" | "workspace">("calendars");
+  const [section, setSection] = useState<"calendars" | "alerts" | "workspace" | "llm">("calendars");
 
   const alertEmail = email ?? profile?.alertEmail ?? "";
 
@@ -126,6 +133,7 @@ function SettingsPage() {
     if (
       requestedSection === "alerts" ||
       requestedSection === "workspace" ||
+      requestedSection === "llm" ||
       requestedSection === "calendars"
     ) {
       setSection(requestedSection);
@@ -142,7 +150,7 @@ function SettingsPage() {
     window.history.replaceState({}, "", "/settings?section=calendars");
   }, []);
 
-  function selectSection(next: "calendars" | "alerts" | "workspace") {
+  function selectSection(next: "calendars" | "alerts" | "workspace" | "llm") {
     setSection(next);
     window.history.replaceState({}, "", `/settings?section=${next}`);
   }
@@ -159,6 +167,7 @@ function SettingsPage() {
             { id: "calendars" as const, label: "Calendars", icon: CalendarDays },
             { id: "alerts" as const, label: "Email alerts", icon: Bell },
             { id: "workspace" as const, label: "Workspace", icon: Settings2 },
+            { id: "llm" as const, label: "LLM", icon: Settings2 },
           ].map((item) => {
             const Icon = item.icon;
             const active = section === item.id;
@@ -684,6 +693,7 @@ function SettingsPage() {
           </>
         )}
 
+        {section === "llm" && <LLMSettingsPanel />}
         {section === "workspace" && (
           <Card className="p-5">
             <h2 className="font-display text-xl">Workspace</h2>

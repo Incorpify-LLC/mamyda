@@ -10,6 +10,8 @@ import {
   NotebookPen,
   Settings,
   Sun,
+  Users,
+  MessageSquare,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { UserButton } from "@/lib/auth/gates";
@@ -17,14 +19,14 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { GlobalSearch } from "@/components/global-search";
+import { BOARD_SECTIONS, boardSearchContext, isBoardPath } from "@/lib/board-navigation";
 
 const NAV = [
   { to: "/", label: "Today", icon: LayoutDashboard },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/board", label: "Board", icon: Columns3 },
-  { to: "/minutes", label: "Minutes", icon: FileText },
-  { to: "/notes", label: "Notes", icon: NotebookPen },
-  { to: "/vault", label: "Vault", icon: Lock },
+  { to: "/clients", label: "Clients/Projects", icon: Users },
+  { to: "/chat", label: "LLM Chat", icon: MessageSquare },
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
@@ -36,7 +38,9 @@ function NavLinks({ onNavigate, compact }: { onNavigate?: () => void; compact?: 
         const active =
           item.to === "/"
             ? pathname === "/"
-            : pathname === item.to || pathname.startsWith(`${item.to}/`);
+            : item.to === "/board"
+              ? isBoardPath(pathname)
+              : pathname === item.to || pathname.startsWith(`${item.to}/`);
         const Icon = item.icon;
         return (
           <Link
@@ -64,14 +68,18 @@ export function AppShell({
   title,
   action,
   children,
+  boardContext,
 }: {
   title: string;
   action?: ReactNode;
   children: ReactNode;
+  boardContext?: { clientId?: string; projectId?: string };
 }) {
   const [open, setOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const search = useRouterState({ select: (s) => s.location.search });
+  const context = boardContext ?? boardSearchContext(search);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("mamyda-theme");
@@ -130,31 +138,63 @@ export function AppShell({
             </Button>
           </div>
         </header>
-        <div className="px-4 py-5 pb-24 md:px-8 md:pb-10">{children}</div>
+        <div className="px-4 py-5 pb-24 md:px-8 md:pb-10">
+          {isBoardPath(pathname) && (
+            <nav
+              aria-label="Board sections"
+              className="mb-5 grid grid-cols-5 gap-1 rounded-lg border border-border bg-card p-1 sm:flex sm:flex-wrap"
+            >
+              {BOARD_SECTIONS.map((section, index) => {
+                const Icon = [Columns3, FileText, NotebookPen, FileText, Lock][index];
+                const active = pathname === section.to;
+                return (
+                  <Link
+                    key={section.to}
+                    to={section.to}
+                    search={context}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "flex items-center justify-center gap-2 rounded-md px-2 py-2 text-sm font-medium sm:px-3",
+                      active
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    <Icon className="hidden size-4 sm:block" aria-hidden="true" />
+                    {section.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          )}
+          {children}
+        </div>
       </div>
 
       <nav
         aria-label="Primary navigation"
         className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-border bg-card/95 px-1 py-1 md:hidden"
       >
-        {NAV.slice(0, 5).map((item) => {
+        {NAV.map((item) => {
           const Icon = item.icon;
           const active =
             item.to === "/"
               ? pathname === "/"
-              : pathname === item.to || pathname.startsWith(`${item.to}/`);
+              : item.to === "/board"
+                ? isBoardPath(pathname)
+                : pathname === item.to || pathname.startsWith(`${item.to}/`);
           return (
             <Link
               key={item.to}
               to={item.to}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex min-w-12 flex-col items-center gap-0.5 rounded-md px-2 py-1.5 text-[10px] font-medium transition-colors",
+                "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] font-medium transition-colors",
                 active ? "bg-primary text-primary-foreground" : "text-muted-foreground",
               )}
             >
               <Icon className="size-4" aria-hidden="true" />
-              {item.label}
+              {item.to === "/clients" ? "Clients" : item.label}
             </Link>
           );
         })}

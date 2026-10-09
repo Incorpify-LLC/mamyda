@@ -4,6 +4,7 @@ import type { PrivateKey } from "openpgp";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,14 +21,16 @@ import {
   decryptNote,
   encryptNote,
   generateVaultKey,
-  readStashedKey,
-  stashFromDecrypted,
   unlockPrivateKey,
   validatePrivateKeyBackup,
 } from "@/lib/vault-crypto";
 import { toast } from "sonner";
+import { boardSearchContext } from "@/lib/board-navigation";
 
-export const Route = createFileRoute("/_app/vault")({ component: VaultPage });
+export const Route = createFileRoute("/_app/vault")({
+  validateSearch: boardSearchContext,
+  component: VaultPage,
+});
 
 function VaultPage() {
   const user = useCurrentUser();
@@ -43,6 +46,8 @@ function VaultPage() {
   const [backupPassphrase, setBackupPassphrase] = useState("");
   const [checkingBackup, setCheckingBackup] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [opening, setOpening] = useState<{ id: string; title: string } | null>(null);
+  const [assetPassword, setAssetPassword] = useState("");
 
   const profile = ws.data?.profile;
   const hasKeys = Boolean(profile?.vaultPublicKey && profile?.vaultPrivateKeyArmored);
@@ -167,9 +172,8 @@ function VaultPage() {
   }
 
   useEffect(() => {
-    void readStashedKey().then((k) => {
-      if (k) setKey(k);
-    });
+    clearUnlockedKey();
+    return () => clearUnlockedKey();
   }, []);
 
   async function createKeys() {
@@ -188,7 +192,6 @@ function VaultPage() {
         data: { publicKey: pair.publicKey, privateKeyArmored: pair.privateKey },
       });
       const unlocked = await unlockPrivateKey(pair.privateKey, passphrase);
-      await stashFromDecrypted(unlocked);
       setKey(unlocked);
       setPassphrase("");
       await ws.refetch();
@@ -205,7 +208,6 @@ function VaultPage() {
     setBusy(true);
     try {
       const unlocked = await unlockPrivateKey(profile.vaultPrivateKeyArmored, passphrase);
-      await stashFromDecrypted(unlocked);
       setKey(unlocked);
       setPassphrase("");
     } catch {
@@ -240,15 +242,26 @@ function VaultPage() {
   }
 
   async function openNote(id: string, noteTitle: string) {
-    if (!key) return;
+    setAssetPassword("");
+    setOpening({ id, title: noteTitle });
+  }
+
+  async function decryptSelected() {
+    if (!opening || !profile?.vaultPrivateKeyArmored) return;
+    setBusy(true);
     try {
-      const row = await getVaultCipher({ data: id });
-      const plain = await decryptNote(row.ciphertext, key);
-      setEditingId(id);
-      setTitle(noteTitle);
+      const explicitKey = await unlockPrivateKey(profile.vaultPrivateKeyArmored, assetPassword);
+      const row = await getVaultCipher({ data: opening.id });
+      const plain = await decryptNote(row.ciphertext, explicitKey);
+      setEditingId(opening.id);
+      setTitle(opening.title);
       setBody(plain);
+      setOpening(null);
     } catch {
-      toast.error("Could not decrypt");
+      toast.error("Could not decrypt. Check this asset's key and password.");
+    } finally {
+      setBusy(false);
+      setAssetPassword("");
     }
   }
 
@@ -263,6 +276,9 @@ function VaultPage() {
             onClick={() => {
               clearUnlockedKey();
               setKey(null);
+              setBody("");
+              setTitle("");
+              setEditingId(null);
             }}
           >
             Lock
@@ -270,6 +286,52 @@ function VaultPage() {
         ) : null
       }
     >
+      <Dialog
+        open={Boolean(opening)}
+        onOpenChange={(open) => {
+          if (!open && !busy) {
+            setOpening(null);
+            setAssetPassword("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Unlock {opening?.title}</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Enter your workspace Vault password to decrypt this note in this browser.
+          </p>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void decryptSelected();
+            }}
+          >
+            <Label htmlFor="asset-password">Vault password</Label>
+            <Input
+              id="asset-password"
+              type="password"
+              autoComplete="off"
+              value={assetPassword}
+              onChange={(e) => setAssetPassword(e.target.value)}
+              required
+            />
+            <Button type="submit" disabled={busy || !assetPassword}>
+              {busy ? "Decrypting…" : "Unlock note"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Card className="mb-4 p-4">
+        <h2 className="font-medium">Project association and encryption are separate</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Current Vault notes use your workspace key. Tasks and Notes can optionally encrypt their
+          content with this same key. Files and Minutes are not Vault-encrypted yet. The planned
+          model lets each project reuse a workspace key or choose its own key; encryption is
+          optional. Project-specific keys are not available yet. Opening Vault always requires your
+          passphrase; it does not restore an unlocked key automatically.
+        </p>
+      </Card>
       <p className="mb-6 max-w-xl text-sm text-muted-foreground">
         Notes are encrypted in this browser with OpenPGP. The server keeps only ciphertext and a
         passphrase-protected private key. Desktop <code className="text-xs">gpg</code> can read

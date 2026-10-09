@@ -23,6 +23,11 @@ vi.mock("@tanstack/react-start", () => ({
 }));
 vi.mock("@/lib/auth/middleware", () => ({ authMiddleware: {} }));
 vi.mock("@/lib/db", () => ({ getSql: async () => state.sql }));
+vi.mock("@/lib/mamyda/private-content.server", () => ({
+  storePrivateContent: async () => "private/object",
+}));
+vi.mock("@/lib/mamyda/files", () => ({ readContentObject: async () => "ciphertext" }));
+import { getPrivateContent } from "@/lib/mamyda/private-content";
 import {
   upsertProject,
   upsertTask,
@@ -39,6 +44,7 @@ beforeAll(async () => {
   await db.exec(readFileSync("migrations/0002_mamyda.sql", "utf8"));
   await db.exec(readFileSync("migrations/0005_calendar_sync.sql", "utf8"));
   await db.exec(readFileSync("migrations/0006_notification_delivery.sql", "utf8"));
+  await db.exec(readFileSync("migrations/0009_private_content.sql", "utf8"));
   state.sql = async (parts: TemplateStringsArray, ...args: unknown[]) => {
     const query = parts.reduce((text, part, i) => text + (i ? `$${i}` : "") + part, "");
     return (await db.query(query, args)).rows;
@@ -67,6 +73,48 @@ test("editing a task saves the selected project", async () => {
   expect(
     (await db.query<any>("SELECT project_id FROM tasks WHERE id='t1'")).rows[0].project_id,
   ).toBe("p2");
+});
+test("encrypted task bodies are absent from DB, survive locked metadata edits and reject stale plaintext", async () => {
+  const encryption = { ciphertext: "ciphertext", fingerprint: "a".repeat(40) };
+  await upsertTask({
+    data: { id: "t1", projectId: "p1", title: "Visible", labels: ["tag"], encryption },
+  });
+  let row = (await db.query<any>("select notes,content_object_key,labels from tasks where id='t1'"))
+    .rows[0];
+  expect(row.notes).toBeNull();
+  expect(row.content_object_key).toBe("private/object");
+  await upsertTask({ data: { id: "t1", projectId: "p1", title: "Renamed" } });
+  row = (await db.query<any>("select notes,content_object_key from tasks where id='t1'")).rows[0];
+  expect(row).toEqual({ notes: null, content_object_key: "private/object" });
+  await expect(
+    upsertTask({ data: { id: "t1", projectId: "p1", title: "Stale", notes: "secret" } }),
+  ).rejects.toThrow("plaintext");
+  expect((await getPrivateContent({ data: { kind: "task", id: "t1" } })).ciphertext).toBe(
+    "ciphertext",
+  );
+  state.userId = "bob";
+  await expect(getPrivateContent({ data: { kind: "task", id: "t1" } })).rejects.toThrow();
+});
+test("encrypted note stores explicit searchable metadata but no plaintext body", async () => {
+  const encryption = { ciphertext: "ciphertext", fingerprint: "a".repeat(40) };
+  const saved = await saveNote({
+    data: { body: "", title: "Visible name", tags: ["tag"], projectId: "p1", encryption },
+  });
+  expect(saved.notes.find((n) => n.id === saved.id)).toMatchObject({
+    title: "Visible name",
+    body: "",
+    tags: ["tag"],
+    encrypted: true,
+  });
+  await expect(saveNote({ data: { id: saved.id, body: "stale plaintext" } })).rejects.toThrow(
+    "plaintext",
+  );
+  await expect(saveNote({ data: { id: saved.id, body: "" } })).rejects.toThrow("Unlock");
+  expect((await getPrivateContent({ data: { kind: "note", id: saved.id } })).ciphertext).toBe(
+    "ciphertext",
+  );
+  state.userId = "bob";
+  await expect(getPrivateContent({ data: { kind: "note", id: saved.id } })).rejects.toThrow();
 });
 test("notes cannot link another account project", async () => {
   await expect(saveNote({ data: { body: "Note", projectId: "pb" } })).rejects.toThrow();

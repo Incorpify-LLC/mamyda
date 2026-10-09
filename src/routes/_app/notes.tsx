@@ -7,7 +7,9 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { deleteNote, saveNote } from "@/lib/mamyda/writing";
 import { useNotes, useWorkspace } from "@/lib/mamyda/hooks";
-import { extractTags } from "@/lib/tags";
+import { extractTags, titleFromBody } from "@/lib/tags";
+import { ContentProtection } from "@/components/content-protection";
+import { encryptPrivateContent } from "@/lib/content-crypto";
 import { formatDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -15,9 +17,13 @@ import type { Note } from "@/lib/mamyda/types";
 import { useWritingDraft } from "@/components/writing-draft";
 import { TurnstileField, type TurnstileStatus } from "@/components/turnstile-field";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { LLMEditButton } from "@/components/llm-edit-button";
+import { boardSearchContext } from "@/lib/board-navigation";
 
 export const Route = createFileRoute("/_app/notes")({
   validateSearch: (search: Record<string, unknown>) => ({
+    ...boardSearchContext(search),
     ...(typeof search.noteId === "string" ? { noteId: search.noteId } : {}),
   }),
   component: NotesPage,
@@ -28,9 +34,18 @@ function NotesPage() {
   const list = useNotes();
   const ws = useWorkspace();
   const [filter, setFilter] = useState<string | null>(null);
-  const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  const [projectFilter, setProjectFilter] = useState<string | null>(search.projectId ?? null);
   const [current, setCurrent] = useState<Note | null>(null);
   const [draft, setDraft] = useState("");
+  const [titleDraft, setTitleDraft] = useState("");
+  useEffect(() => setTitleDraft(current?.title ?? ""), [current?.id, current?.title]);
+  const [encryptContent, setEncryptContent] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  const [llmBusy, setLLMBusy] = useState(false);
+  useEffect(() => {
+    setEncryptContent(Boolean(current?.encrypted));
+    setUnlocked(false);
+  }, [current?.id, current?.encrypted]);
   const [captcha, setCaptcha] = useState("");
   const [captchaStatus, setCaptchaStatus] = useState<TurnstileStatus>("unavailable");
   const [captchaKey, setCaptchaKey] = useState(0);
@@ -43,8 +58,15 @@ function NotesPage() {
 
   const visible = (list.data ?? []).filter(
     (n) =>
-      (!filter || n.tags.includes(filter)) && (!projectFilter || n.projectId === projectFilter),
+      (!filter || n.tags.includes(filter)) &&
+      (!projectFilter || n.projectId === projectFilter) &&
+      (!search.clientId ||
+        ws.data?.projects.some((p) => p.id === n.projectId && p.clientId === search.clientId)),
   );
+
+  useEffect(() => {
+    setProjectFilter(search.projectId ?? null);
+  }, [search.projectId]);
 
   const projectById = useMemo(
     () => new Map((ws.data?.projects ?? []).map((p) => [p.id, p])),
@@ -63,8 +85,23 @@ function NotesPage() {
   }, [search.noteId, list.data, current?.id]);
 
   async function persist() {
+    if (current?.encrypted && !unlocked) throw new Error("Unlock content before saving");
+    const encryption = encryptContent
+      ? await encryptPrivateContent(draft, ws.data?.profile.vaultPublicKey)
+      : undefined;
     const next = await saveNote({
-      data: { id: current?.id || undefined, body: draft, projectId: current?.projectId ?? null },
+      data: {
+        id: current?.id || undefined,
+        body: encryption ? "" : draft,
+        projectId: current?.projectId ?? null,
+        ...(encryption
+          ? {
+              encryption,
+              title: titleDraft.trim() || "Untitled",
+              tags: extractTags(draft),
+            }
+          : { title: titleDraft.trim() || titleFromBody(draft) }),
+      },
       headers: captcha ? { "x-turnstile-response": captcha } : undefined,
     });
     const saved = next.notes.find((n) => n.id === next.id);
@@ -72,6 +109,7 @@ function NotesPage() {
       throw new Error("Could not identify the saved note. Reload your notes before retrying.");
     setCurrent(saved);
     setDraft(saved.body);
+    setUnlocked(false);
     setCaptcha("");
     setCaptchaStatus("loading");
     setCaptchaKey((value) => value + 1);
@@ -79,16 +117,34 @@ function NotesPage() {
     toast.success("Note saved");
   }
   const protection = useWritingDraft({
+    locked: llmBusy,
+    ephemeral: encryptContent || Boolean(current?.encrypted),
     kind: "notes",
-    value: { id: current?.id ?? "", body: draft, projectId: current?.projectId ?? null },
+    value: {
+      id: current?.id ?? "",
+      body: draft,
+      projectId: current?.projectId ?? null,
+      title: titleDraft,
+    },
     baseline: {
       id: current?.id ?? "",
       body: current?.body ?? "",
       projectId: current?.projectId ?? null,
+      title: current?.title ?? "",
     },
     persist,
     restore: (value, baseline) => {
       const saved = (list.data ?? []).find((n) => n.id === value.id);
+      if (saved?.encrypted) {
+        setCurrent(saved);
+        setDraft("");
+        setTitleDraft(saved.title);
+        setUnlocked(false);
+        toast.warning(
+          "This note is encrypted now. Its earlier plaintext draft was not opened; unlock the saved content with your passphrase.",
+        );
+        return;
+      }
       setCurrent({
         id: value.id,
         title: "",
@@ -100,6 +156,7 @@ function NotesPage() {
         projectId: value.projectId ?? saved?.projectId ?? null,
       });
       setDraft(value.body);
+      setTitleDraft(value.title || saved?.title || "");
     },
   });
 
@@ -114,7 +171,7 @@ function NotesPage() {
             protection.request(() => {
               setCurrent({
                 id: "",
-                projectId: null,
+                projectId: search.projectId ?? null,
                 title: "",
                 body: "",
                 tags: [],
@@ -193,7 +250,7 @@ function NotesPage() {
             <button
               key={n.id}
               type="button"
-              disabled={protection.saving || protection.recoveryPending}
+              disabled={protection.saving || protection.recoveryPending || llmBusy}
               onClick={() =>
                 protection.request(() => {
                   setCurrent(n);
@@ -206,6 +263,7 @@ function NotesPage() {
               )}
             >
               <p className="text-sm font-medium">{n.title}</p>
+              {n.encrypted && <p className="text-xs text-muted-foreground">🔒 Content encrypted</p>}
               <p className="text-xs text-muted-foreground">
                 {n.updatedAt ? formatDay(n.updatedAt) : ""}
                 {n.projectId ? ` · ${projectById.get(n.projectId)?.name ?? ""}` : ""}
@@ -216,13 +274,58 @@ function NotesPage() {
 
         {current ? (
           <Card className="p-5">
+            <Label htmlFor="note-visible-title">Note name (visible while encrypted)</Label>
+            <Input
+              id="note-visible-title"
+              className="mb-3"
+              value={titleDraft}
+              disabled={protection.saving || (Boolean(current.encrypted) && !unlocked)}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              placeholder="Untitled"
+            />
+            <ContentProtection
+              key={current.id || "new-note"}
+              profile={ws.data?.profile}
+              kind="note"
+              id={current.id}
+              encrypted={Boolean(current.encrypted)}
+              enabled={encryptContent}
+              unlocked={unlocked}
+              disabled={protection.saving || protection.recoveryPending || llmBusy}
+              onToggle={setEncryptContent}
+              onUnlock={(body) => {
+                setDraft(body);
+                setCurrent({ ...current, body });
+                setUnlocked(true);
+              }}
+              onLock={() => {
+                if (
+                  draft !== current.body &&
+                  !window.confirm("Discard unsaved changes and lock this note?")
+                )
+                  return;
+                setDraft("");
+                setCurrent({ ...current, body: "" });
+                setUnlocked(false);
+                protection.clear();
+              }}
+            />
             <Textarea
               aria-label="Note body"
-              disabled={protection.saving || protection.recoveryPending}
+              disabled={
+                protection.saving ||
+                llmBusy ||
+                protection.recoveryPending ||
+                (Boolean(current.encrypted) && !unlocked)
+              }
               className="min-h-72 font-sans"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="Write. Use #tags."
+              placeholder={
+                current.encrypted && !unlocked
+                  ? "Encrypted content — unlock to view"
+                  : "Write. Use #tags."
+              }
             />
             <div className="mt-3 flex flex-wrap gap-1.5">
               {liveTags.map((t) => (
@@ -269,10 +372,38 @@ function NotesPage() {
               onToken={setCaptcha}
               onStatus={setCaptchaStatus}
             />
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
+              <LLMEditButton
+                title={titleDraft}
+                body={draft}
+                disabled={
+                  protection.saving ||
+                  protection.recoveryPending ||
+                  llmBusy ||
+                  (Boolean(current.encrypted) && !unlocked)
+                }
+                onBusyChange={setLLMBusy}
+                onEdited={setDraft}
+              />
+              <LLMEditButton
+                kind="spellcheck"
+                label="Correct spelling with LLM"
+                title={titleDraft}
+                body={draft}
+                disabled={
+                  protection.saving ||
+                  protection.recoveryPending ||
+                  llmBusy ||
+                  (Boolean(current.encrypted) && !unlocked)
+                }
+                onBusyChange={setLLMBusy}
+                onEdited={setDraft}
+              />
               <Button
                 disabled={
                   protection.saving ||
+                  llmBusy ||
+                  (Boolean(current.encrypted) && !unlocked) ||
                   protection.recoveryPending ||
                   captchaStatus !== "verified" ||
                   !captcha
@@ -284,7 +415,7 @@ function NotesPage() {
               {current.id && (
                 <Button
                   variant="ghost"
-                  disabled={protection.saving || protection.recoveryPending}
+                  disabled={protection.saving || protection.recoveryPending || llmBusy}
                   onClick={async () => {
                     if (!window.confirm("Delete this note and any unsaved changes?")) return;
                     try {

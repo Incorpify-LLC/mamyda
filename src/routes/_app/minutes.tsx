@@ -6,16 +6,20 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { deleteMinute, polishMinutes, saveMinute } from "@/lib/mamyda/writing";
+import { deleteMinute, saveMinute } from "@/lib/mamyda/writing";
+import { LLMEditButton } from "@/components/llm-edit-button";
+import { MinuteRecordings } from "@/components/minute-recordings";
 import { useCalendar, useMinutes, useWorkspace } from "@/lib/mamyda/hooks";
 import { formatDay, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Minute } from "@/lib/mamyda/types";
 import { useWritingDraft } from "@/components/writing-draft";
+import { boardSearchContext } from "@/lib/board-navigation";
 
 export const Route = createFileRoute("/_app/minutes")({
   validateSearch: (search: Record<string, unknown>) => ({
+    ...boardSearchContext(search),
     ...(typeof search.minuteId === "string" ? { minuteId: search.minuteId } : {}),
   }),
   component: MinutesPage,
@@ -90,29 +94,6 @@ function MinutesPage() {
     });
   }
 
-  async function polish() {
-    setPolishing(true);
-    try {
-      const result = await polishMinutes({
-        data: {
-          title: current.title,
-          body: current.body,
-          attendees: current.attendees,
-        },
-      });
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
-      setCurrent((c) => ({ ...c, body: result.text }));
-      toast.success("Polished — review, then save");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not polish; your draft was kept.");
-    } finally {
-      setPolishing(false);
-    }
-  }
-
   return (
     <AppShell
       title="Minutes"
@@ -120,7 +101,7 @@ function MinutesPage() {
         <Button
           size="sm"
           disabled={protection.saving || polishing || protection.recoveryPending}
-          onClick={() => select(emptyMinute())}
+          onClick={() => select({ ...emptyMinute(), projectId: search.projectId ?? null })}
         >
           New
         </Button>
@@ -129,23 +110,32 @@ function MinutesPage() {
       {protection.dialog}
       <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
         <div className="space-y-2">
-          {(list.data ?? []).map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              disabled={protection.saving || polishing || protection.recoveryPending}
-              onClick={() => select(m)}
-              className={cn(
-                "w-full rounded-lg border px-3 py-2 text-left",
-                selectedId === m.id ? "border-primary bg-card" : "border-border bg-card/60",
-              )}
-            >
-              <p className="text-sm font-medium">{m.title}</p>
-              <p className="text-xs text-muted-foreground">
-                {m.updatedAt ? formatDay(m.updatedAt) : ""}
-              </p>
-            </button>
-          ))}
+          {(list.data ?? [])
+            .filter(
+              (m) =>
+                (!search.projectId || m.projectId === search.projectId) &&
+                (!search.clientId ||
+                  ws.data?.projects.some(
+                    (p) => p.id === m.projectId && p.clientId === search.clientId,
+                  )),
+            )
+            .map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                disabled={protection.saving || polishing || protection.recoveryPending}
+                onClick={() => select(m)}
+                className={cn(
+                  "w-full rounded-lg border px-3 py-2 text-left",
+                  selectedId === m.id ? "border-primary bg-card" : "border-border bg-card/60",
+                )}
+              >
+                <p className="text-sm font-medium">{m.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  {m.updatedAt ? formatDay(m.updatedAt) : ""}
+                </p>
+              </button>
+            ))}
           {(list.data ?? []).length === 0 && (
             <p className="text-sm text-muted-foreground">
               Capture what was said. Attach a meeting or a project.
@@ -154,7 +144,33 @@ function MinutesPage() {
         </div>
 
         <Card className="p-5">
-          <fieldset disabled={protection.saving || polishing || protection.recoveryPending}>
+          <MinuteRecordings
+            disabled={protection.saving || polishing || protection.recoveryPending}
+            canAccept={Boolean(current.id) && !protection.dirty}
+            onBusyChange={setPolishing}
+            onTranscript={(text) => {
+              if (
+                current.body.trim() &&
+                !window.confirm(
+                  "Append this transcript to the current minutes draft? Existing text will be kept.",
+                )
+              )
+                return;
+              const body = current.body.trim() ? `${current.body}\n\n${text}` : text;
+              if (body.length > 100000) {
+                toast.error("Combined minutes exceed 100,000 characters; start separate minutes");
+                return;
+              }
+              setCurrent((c) => ({ ...c, body }));
+              toast.success(
+                "Transcript added to draft — review and Save before deleting the recording",
+              );
+            }}
+          />
+          <fieldset
+            className="mt-4"
+            disabled={protection.saving || polishing || protection.recoveryPending}
+          >
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="mtitle">Title</Label>
@@ -240,13 +256,24 @@ function MinutesPage() {
                 <Button disabled={protection.saving} onClick={() => void protection.save()}>
                   {protection.saving ? "Saving…" : "Save"}
                 </Button>
-                <Button
-                  variant="outline"
-                  disabled={polishing || !current.body.trim()}
-                  onClick={() => void polish()}
-                >
-                  {polishing ? "Polishing…" : "Polish with Grok"}
-                </Button>
+                <LLMEditButton
+                  kind="minutes-polish"
+                  title={current.title}
+                  attendees={current.attendees}
+                  body={current.body}
+                  disabled={protection.saving || protection.recoveryPending}
+                  onBusyChange={setPolishing}
+                  onEdited={(text) => setCurrent((c) => ({ ...c, body: text }))}
+                />
+                <LLMEditButton
+                  kind="spellcheck"
+                  label="Correct spelling with LLM"
+                  title={current.title}
+                  body={current.body}
+                  disabled={protection.saving || protection.recoveryPending}
+                  onBusyChange={setPolishing}
+                  onEdited={(text) => setCurrent((c) => ({ ...c, body: text }))}
+                />
                 {current.id && (
                   <Button
                     variant="ghost"

@@ -1,10 +1,12 @@
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
-import { nid } from "@/lib/utils";
-
-const MAX_BYTES = 8 * 1024 * 1024;
 
 function s3(): { client: S3Client; bucket: string } | null {
   const endpoint = process.env.S3_ENDPOINT?.trim();
@@ -23,21 +25,6 @@ function s3(): { client: S3Client; bucket: string } | null {
   };
 }
 
-function safeName(name: string): string {
-  const base = name.split(/[/\\]/).pop()?.replace(/[^\w.\- ()]+/g, "_").slice(0, 120);
-  return base || "file";
-}
-
-function allowedType(type: string): boolean {
-  return (
-    type.startsWith("image/") ||
-    type === "application/pdf" ||
-    type === "text/plain" ||
-    type === "application/zip" ||
-    type.startsWith("application/vnd.openxmlformats-officedocument.")
-  );
-}
-
 export const filesEnabled = createServerFn({ method: "GET" }).handler(async () => Boolean(s3()));
 
 export const listClientFiles = createServerFn({ method: "GET" })
@@ -45,52 +32,37 @@ export const listClientFiles = createServerFn({ method: "GET" })
   .validator((clientId: string) => clientId)
   .handler(async ({ context, data: clientId }) => {
     const sql = await getSql();
-    return sql<{ id: string; name: string; byte_size: number; content_type: string }>`
-      select id, name, byte_size, content_type from client_files
+    return sql<{
+      id: string;
+      name: string;
+      byte_size: number;
+      content_type: string;
+      created_at: string;
+      project_id: string | null;
+    }>`
+      select id, name, byte_size, content_type, created_at, project_id from client_files
       where user_id = ${context.userId} and client_id = ${clientId}
       order by created_at desc
     `;
-  });
-
-export const uploadClientFile = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
-  .validator((input: { clientId: string; name: string; contentType: string; base64: string }) => input)
-  .handler(async ({ context, data }) => {
-    const store = s3();
-    if (!store) throw new Error("File storage is not configured");
-    if (!allowedType(data.contentType)) throw new Error("That file type is not allowed");
-    const bytes = Buffer.from(data.base64, "base64");
-    if (bytes.length === 0 || bytes.length > MAX_BYTES) throw new Error("File must be under 8 MB");
-    const sql = await getSql();
-    const owned = await sql`select id from clients where id = ${data.clientId} and user_id = ${context.userId}`;
-    if (!owned[0]) throw new Error("Unknown client");
-    const id = nid();
-    const key = `${context.userId}/${data.clientId}/${id}/${safeName(data.name)}`;
-    await store.client.send(new PutObjectCommand({
-      Bucket: store.bucket,
-      Key: key,
-      Body: bytes,
-      ContentType: data.contentType,
-    }));
-    await sql`
-      insert into client_files (id, user_id, client_id, name, content_type, byte_size, object_key)
-      values (${id}, ${context.userId}, ${data.clientId}, ${safeName(data.name)}, ${data.contentType}, ${bytes.length}, ${key})
-    `;
-    return { id };
   });
 
 export const deleteClientFile = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((id: string) => id)
   .handler(async ({ context, data: id }) => {
+    const { requireTurnstile } = await import("./turnstile.server");
+    await requireTurnstile("file-delete");
     const sql = await getSql();
     const rows = await sql<{ object_key: string }>`
       select object_key from client_files where id = ${id} and user_id = ${context.userId}
     `;
     if (!rows[0]) return;
     const store = s3();
+    if (!store) throw new Error("File storage is not configured; file reference retained");
     if (store) {
-      await store.client.send(new DeleteObjectCommand({ Bucket: store.bucket, Key: rows[0].object_key }));
+      await store.client.send(
+        new DeleteObjectCommand({ Bucket: store.bucket, Key: rows[0].object_key }),
+      );
     }
     await sql`delete from client_files where id = ${id} and user_id = ${context.userId}`;
   });
@@ -104,8 +76,56 @@ export async function readOwnedFile(userId: string, id: string) {
     where id = ${id} and user_id = ${userId}
   `;
   if (!rows[0]) return null;
-  const object = await store.client.send(new GetObjectCommand({ Bucket: store.bucket, Key: rows[0].object_key }));
+  const object = await store.client.send(
+    new GetObjectCommand({ Bucket: store.bucket, Key: rows[0].object_key }),
+  );
   if (!object.Body) return null;
   const bytes = await object.Body.transformToByteArray();
   return { name: rows[0].name, contentType: rows[0].content_type, bytes };
+}
+
+export async function writeFileObject(key: string, bytes: Uint8Array, contentType: string) {
+  const store = s3();
+  if (!store) throw new Error("File storage is not configured");
+  await store.client.send(
+    new PutObjectCommand({
+      Bucket: store.bucket,
+      Key: key,
+      Body: bytes,
+      ContentType: contentType,
+      ContentLength: bytes.byteLength,
+    }),
+    { abortSignal: AbortSignal.timeout(60000) },
+  );
+}
+
+export const reserveFileBatch = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) => input)
+  .handler(async ({ context, data }) => {
+    if (!s3()) throw new Error("File storage is not configured");
+    const { createFileUploads } = await import("./file-uploads.server");
+    const { requireTurnstile } = await import("./turnstile.server");
+    return createFileUploads(await getSql(), { put: writeFileObject }, requireTurnstile).reserve(
+      context.userId,
+      data,
+    );
+  });
+
+export async function readContentObject(key: string): Promise<string> {
+  const store = s3();
+  if (!store) throw new Error("File storage is not configured");
+  const object = await store.client.send(new GetObjectCommand({ Bucket: store.bucket, Key: key }), {
+    abortSignal: AbortSignal.timeout(60000),
+  });
+  if (!object.Body || !(Symbol.asyncIterator in object.Body))
+    throw new Error("Encrypted content unavailable");
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of object.Body as AsyncIterable<Uint8Array>) {
+    size += chunk.byteLength;
+    if (size > 500000) throw new Error("Encrypted content exceeds limit");
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }

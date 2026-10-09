@@ -44,13 +44,22 @@ services:
       VITE_AUTH_ENABLED: "true"
       POSTGRES_HOST: postgres
       BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      MEDIA_TEMP_DIR: /var/lib/mamyda-recordings
     mem_limit: 512m
+    volumes:
+      - mamyda-recordings:/var/lib/mamyda-recordings
     depends_on:
       migrate:
         condition: service_completed_successfully
     networks: [internal, mamyda-web]
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -71,6 +80,29 @@ services:
     networks: [internal]
     restart: unless-stopped
 
+  media-worker:
+    build: .
+    env_file: deploy/.env
+    environment:
+      APP_ENV: staging
+      POSTGRES_HOST: postgres
+      MEDIA_TEMP_DIR: /var/lib/mamyda-recordings
+    command: ["node", "--experimental-strip-types", "scripts/media-worker.mjs"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 64
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - mamyda-recordings:/var/lib/mamyda-recordings
+    networks: [internal]
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     command: ["tunnel", "--no-autoupdate", "run", "--token", "${TUNNEL_TOKEN}"]
@@ -89,3 +121,4 @@ networks:
 
 volumes:
   mamyda-pg:
+  mamyda-recordings:

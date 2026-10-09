@@ -40,6 +40,7 @@ export type Project = {
 };
 
 export type Task = {
+  encrypted?: boolean;
   id: string;
   projectId: string;
   title: string;
@@ -92,6 +93,7 @@ export type Minute = {
 };
 
 export type Note = {
+  encrypted?: boolean;
   id: string;
   projectId: string | null;
   title: string;

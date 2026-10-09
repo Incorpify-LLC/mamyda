@@ -6,6 +6,7 @@ node_modules
 screenshots
 .env
 .env.*
+deploy/.env
 *.log
 coverage
 playwright-report

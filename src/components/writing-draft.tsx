@@ -13,6 +13,7 @@ export function useWritingDraft<T>({
   restore,
   persist,
   locked = false,
+  ephemeral = false,
 }: {
   kind: "notes" | "minutes";
   value: T;
@@ -20,6 +21,7 @@ export function useWritingDraft<T>({
   restore: (value: T, baseline: T) => void;
   persist: () => Promise<void>;
   locked?: boolean;
+  ephemeral?: boolean;
 }) {
   const user = useCurrentUser();
   const key = user ? writingDraftKey(user.id, kind) : null;
@@ -45,10 +47,22 @@ export function useWritingDraft<T>({
   };
   useEffect(() => {
     if (!key) return;
+    if (ephemeral) {
+      clear();
+      setRecovery(null);
+      setLoaded(true);
+      return;
+    }
     try {
       const raw = sessionStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw);
+        // Upgrade existing note drafts without discarding their unsaved bodies.
+        if (kind === "notes" && parsed.version === 1) {
+          for (const part of [parsed.value, parsed.baseline]) {
+            if (part && typeof part === "object" && !Object.hasOwn(part, "title")) part.title = "";
+          }
+        }
         // Validate against the editor's known shape before restoring untrusted storage.
         const matches = (candidate: unknown, shape: unknown): boolean => {
           if (shape === null) return candidate === null || typeof candidate === "object";
@@ -77,16 +91,20 @@ export function useWritingDraft<T>({
     }
     setLoaded(true);
     // Read once per account/editor, never replace active typing with stored text.
-  }, [key]);
+  }, [key, ephemeral]);
   useEffect(() => {
     if (!key || !loaded || recovery) return;
+    if (ephemeral) {
+      clear();
+      return;
+    }
     try {
       if (dirty) sessionStorage.setItem(key, JSON.stringify({ version: 1, value, baseline }));
       else sessionStorage.removeItem(key);
     } catch {
       setStorageError(true);
     }
-  }, [key, loaded, recovery, dirty, value, baseline]);
+  }, [key, loaded, recovery, dirty, value, baseline, ephemeral]);
   async function save() {
     if (busy.current || locked) return false;
     busy.current = true;

@@ -1,4 +1,4 @@
-import { idInput, keysInput, minuteInput, noteInput, polishInput, vaultInput } from "./validation";
+import { idInput, keysInput, minuteInput, noteInput, vaultInput } from "./validation";
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
@@ -84,41 +84,6 @@ export const deleteMinute = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const polishMinutes = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
-  .validator((input: unknown) => polishInput.parse(input))
-  .handler(async ({ data }) => {
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) return { ok: false as const, error: "AI is not available" };
-    const res = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "grok-4.5",
-        max_tokens: 800,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Rewrite meeting bullets into clear minutes. Keep facts, decisions, owners, and next steps. No fluff. Plain text with short headings: Summary, Decisions, Actions.",
-          },
-          {
-            role: "user",
-            content: `Title: ${data.title}\nAttendees: ${data.attendees ?? ""}\n\n${data.body}`,
-          },
-        ],
-      }),
-    });
-    if (!res.ok) return { ok: false as const, error: `xAI API error ${res.status}` };
-    const body = (await res.json()) as {
-      choices: { message: { content: string } }[];
-    };
-    return { ok: true as const, text: body.choices[0]?.message.content ?? "" };
-  });
-
 export const listNotes = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => notesWithTags(context.userId));
@@ -139,9 +104,27 @@ export const saveNote = createServerFn({ method: "POST" })
         await sql`select id from notes where id = ${data.id} and user_id = ${context.userId}`;
       if (!owned[0]) throw new Error("Note not found");
     }
+    const existing = data.id
+      ? (
+          await sql<{
+            content_object_key: string | null;
+            content_key_fingerprint: string | null;
+          }>`select content_object_key,content_key_fingerprint from notes where id=${data.id} and user_id=${context.userId}`
+        )[0]
+      : undefined;
+    const { assertContentWrite } = await import("@/lib/content-privacy");
+    assertContentWrite(data.body, Boolean(data.encryption), Boolean(existing?.content_object_key));
+    if (existing?.content_object_key && !data.encryption)
+      throw new Error("Unlock this note before editing and save it encrypted");
+    const objectKey = data.encryption
+      ? await (
+          await import("./private-content.server")
+        ).storePrivateContent(sql, context.userId, data.encryption)
+      : null;
+    const fingerprint = data.encryption?.fingerprint ?? null;
     const body = data.body;
     const title = (data.title?.trim() || titleFromBody(body)).slice(0, 80);
-    const tags = extractTags(body);
+    const tags = data.encryption ? data.tags! : extractTags(body);
     const projects = await sql<{ id: string; slug: string }>`
       select id, slug from projects where user_id = ${context.userId} and archived = false
     `;
@@ -159,16 +142,19 @@ export const saveNote = createServerFn({ method: "POST" })
     }
     let id = data.id;
     if (id) {
-      await sql`
-        update notes set title = ${title}, body = ${body}, project_id = ${projectId}, updated_at = now()
+      const changed = await sql`
+        update notes set title = ${title}, body = ${body}, project_id = ${projectId}, content_object_key=${objectKey},content_key_fingerprint=${fingerprint}, updated_at = now()
         where id = ${id} and user_id = ${context.userId}
+          and content_object_key is not distinct from ${existing?.content_object_key ?? null}
+        returning id
       `;
+      if (!changed[0]) throw new Error("Note content changed; reload before saving");
       await sql`delete from note_tags where note_id = ${id} and user_id = ${context.userId}`;
     } else {
       id = nid();
       await sql`
-        insert into notes (id, user_id, project_id, title, body)
-        values (${id}, ${context.userId}, ${projectId}, ${title}, ${body})
+        insert into notes (id, user_id, project_id, title, body,content_object_key,content_key_fingerprint)
+        values (${id}, ${context.userId}, ${projectId}, ${title}, ${body},${objectKey},${fingerprint})
       `;
     }
     for (const tag of tags) {
