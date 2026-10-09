@@ -18,4 +18,12 @@ Preferences is a protected route separate from workspace integrations. Theme (de
 
 Resolver tests began with a missing-module failure, then passed after implementation. All 177 app tests, type checking, the production build, scoped lint (fast-refresh warnings only), and Board/Chat/submission-verification browser regressions passed. `node scripts/context-ui-e2e.mjs` tests the real shell/selector/preferences with isolated read-only workspace data: section portability, Back, Calendar return, project-only links, recovery, keyboard controls, 320/390px overflow, More destinations and saved preferences. Mobile was visually reviewed in connected Chrome. These fixtures do not prove production data writes.
 
-Release marker: `project-context-20261009-19`. Live deployment and authenticated checks are pending. No database migration is required. Dependency-audit remediation remains separate in #22; local verification is not a claim of green GitHub CI.
+## Live release
+
+Released as `project-context-20261009-19`, source commits `b758a8f`, `10408b8` and `51fe075`, ARM64 image `2500e6655ad9`. Private candidate health/release checks and public live smoke passed. Only the app container was replaced; no migration ran, and database, secrets, worker, scheduler and tunnel were preserved. A smoke attempt during the initial app restart saw a transient 502; checks were rerun successfully once the app was ready. App and database are healthy.
+
+Authenticated Chrome verified desktop section links retaining the same project across Notes, Minutes, Files and locked Vault; the menu and Preferences on mobile; working theme/spacing/layout choices with original choices restored; project-only direct links; explicit missing-project recovery without an unrelated task board; and no page overflow at 320/390px. Live review caught and fixed the cached-workspace Minutes default: both the current context and the initial blank editor now select the same project. Loading context now waits for workspace data before displaying recovery. No customer content was edited, deleted or decrypted, and no paid model or calendar write was triggered. Back, archived/mismatched recovery and keyboard selection were additionally covered in the isolated fixture.
+
+Rollback image: `mamyda-feedback-rollback:project-context-20261009-19-app` (previous image `1705b29c4415`). A private database snapshot is under `/home/sanjayu/mamyda-rollbacks/project-context-20261009-19/` on pi03. Roll back code without restoring the database unless separately authorized.
+
+GitHub run `37952708562` failed at `npm audit --audit-level=high` with the unchanged lockfile. Dependency-audit remediation remains separate in #22; local verification is not a claim of green GitHub CI. #19 is complete.
