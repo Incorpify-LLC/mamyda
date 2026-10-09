@@ -12,7 +12,29 @@ export async function getTranscriptionSettings() {
   return { enabled: false, hasKey: false, model: "fixture-stt" };
 }
 export async function listMediaJobs() {
+  const state = new URLSearchParams(window.location.search).get("state");
+  if (state === "loading") return new Promise<never>(() => {});
+  if (state === "error") throw new Error("Fixture recording query failure");
+  if (state === "ready" || state === "processing")
+    return [
+      {
+        id: "fixture-job",
+        name: "Fixture meeting.wav",
+        byte_size: 1024,
+        status: state,
+        transcript: "Fixture transcript; no provider call.",
+        error: null,
+        progress: 42,
+        created_at: "2026-10-09",
+        expires_at: "2026-10-24",
+        next_chunk: 0,
+        uploaded_bytes: 1024,
+      },
+    ];
   return [];
+}
+export async function getPrivateContent() {
+  throw new Error("Decryption is disabled in this fixture");
 }
 export async function reserveMediaUpload() {
   throw new Error("Uploads are disabled in the UI fixture");

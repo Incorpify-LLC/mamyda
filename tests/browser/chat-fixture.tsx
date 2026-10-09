@@ -16,6 +16,10 @@ import { ClientDialog, ProjectDialog } from "@/components/workspace-managers";
 import { ProjectTaskBoard } from "@/components/project-task-board";
 import type { Task } from "@/lib/mamyda/types";
 import { MinuteRecordings } from "@/components/minute-recordings";
+import { ContentProtection } from "@/components/content-protection";
+import { VaultOverview } from "@/components/vault-overview";
+import { EditorFeedback } from "@/components/editor-feedback";
+import type { Profile } from "@/lib/mamyda/types";
 import {
   LLMChatWorkspace,
   type ChatServices,
@@ -87,6 +91,37 @@ function Fixture() {
     },
   };
   void generation;
+  if (new URLSearchParams(window.location.search).has("editor"))
+    return (
+      <AppShell title="Editor safety">
+        <VaultOverview />
+        <ContentProtection
+          profile={
+            {
+              vaultPublicKey: "fixture-public-key",
+              vaultPrivateKeyArmored: "fixture-private-key",
+            } as Profile
+          }
+          kind="note"
+          id="fixture-note"
+          encrypted
+          enabled
+          unlocked={false}
+          onToggle={() => {}}
+          onUnlock={() => {
+            throw new Error("Unexpected decrypt");
+          }}
+          onLock={() => {}}
+        />
+        <EditorFeedback
+          loading={false}
+          error={false}
+          empty
+          emptyText="No saved notes yet."
+          onRetry={() => {}}
+        />
+      </AppShell>
+    );
   if (new URLSearchParams(window.location.search).has("verification"))
     return <VerificationFixture />;
   if (new URLSearchParams(window.location.search).has("board")) return <BoardFixture />;

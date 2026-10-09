@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { useProjectContext } from "@/components/project-context";
+import { EditorFeedback } from "@/components/editor-feedback";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -192,7 +193,7 @@ function NotesPage() {
             })
           }
         >
-          New
+          New note
         </Button>
       }
     >
@@ -227,6 +228,16 @@ function NotesPage() {
       </div>
       <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
         <div className="space-y-2">
+          <EditorFeedback
+            loading={list.isPending || ws.isPending}
+            error={list.isError || ws.isError}
+            empty={!context.invalid && visible.length === 0}
+            emptyText="No notes match this view. Choose New note to start."
+            onRetry={() => {
+              void ws.refetch();
+              void list.refetch();
+            }}
+          />
           {visible.map((n) => (
             <button
               key={n.id}
@@ -411,7 +422,9 @@ function NotesPage() {
             </div>
           </Card>
         ) : (
-          <p className="text-sm text-muted-foreground">Select a note, or write a new one.</p>
+          <p className="text-sm text-muted-foreground">
+            Select a note, or choose New note to start.
+          </p>
         )}
       </div>
     </AppShell>

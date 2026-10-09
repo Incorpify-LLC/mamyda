@@ -1,5 +1,5 @@
 {
-  "release": "project-context-20261009-19",
+  "release": "editor-disclosure-20261009-20",
   "mode": "production",
-  "description": "Shared Board project context, portable direct links and explicit unavailable-project recovery. Four mobile navigation destinations with More, plus browser-local personal display preferences separate from workspace integrations."
+  "description": "Quieter Minutes recording tools, clear New note and New minutes actions, honest current Vault capabilities and prominent irreversible passphrase-loss warnings, with visible loading and failure states."
 }

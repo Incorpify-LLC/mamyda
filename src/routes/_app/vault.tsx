@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import type { PrivateKey } from "openpgp";
 import { AppShell } from "@/components/app-shell";
 import { useProjectContext } from "@/components/project-context";
+import { VaultOverview } from "@/components/vault-overview";
+import { EditorFeedback } from "@/components/editor-feedback";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -50,6 +52,7 @@ function VaultPage() {
   const [exporting, setExporting] = useState(false);
   const [opening, setOpening] = useState<{ id: string; title: string } | null>(null);
   const [assetPassword, setAssetPassword] = useState("");
+  const [operationError, setOperationError] = useState("");
 
   const profile = ws.data?.profile;
   const hasKeys = Boolean(profile?.vaultPublicKey && profile?.vaultPrivateKeyArmored);
@@ -179,7 +182,10 @@ function VaultPage() {
   }, []);
 
   async function createKeys() {
+    if (busy || hasKeys) return;
+    setOperationError("");
     if (passphrase.length < 8) {
+      setOperationError("Use at least 8 characters for your Vault passphrase.");
       toast.error("Use at least 8 characters");
       return;
     }
@@ -199,6 +205,7 @@ function VaultPage() {
       await ws.refetch();
       toast.success("Vault key created");
     } catch (e) {
+      setOperationError(e instanceof Error ? e.message : "Could not create key");
       toast.error(e instanceof Error ? e.message : "Could not create key");
     } finally {
       setBusy(false);
@@ -206,6 +213,8 @@ function VaultPage() {
   }
 
   async function unlock() {
+    if (busy || !passphrase) return;
+    setOperationError("");
     if (!profile?.vaultPrivateKeyArmored) return;
     setBusy(true);
     try {
@@ -213,6 +222,9 @@ function VaultPage() {
       setKey(unlocked);
       setPassphrase("");
     } catch {
+      setOperationError(
+        "Could not unlock Vault. Check your passphrase; your encrypted content is unchanged.",
+      );
       toast.error("Wrong passphrase");
     } finally {
       setBusy(false);
@@ -220,6 +232,7 @@ function VaultPage() {
   }
 
   async function save() {
+    setOperationError("");
     if (!key || !profile?.vaultPublicKey) return;
     setBusy(true);
     try {
@@ -237,6 +250,9 @@ function VaultPage() {
       await list.refetch();
       toast.success("Locked and stored");
     } catch (e) {
+      setOperationError(
+        e instanceof Error ? e.message : "Encrypt failed; your draft is unchanged.",
+      );
       toast.error(e instanceof Error ? e.message : "Encrypt failed");
     } finally {
       setBusy(false);
@@ -249,6 +265,7 @@ function VaultPage() {
   }
 
   async function decryptSelected() {
+    setOperationError("");
     if (!opening || !profile?.vaultPrivateKeyArmored) return;
     setBusy(true);
     try {
@@ -260,12 +277,27 @@ function VaultPage() {
       setBody(plain);
       setOpening(null);
     } catch {
+      setOperationError("Could not decrypt. Check this asset's key and password.");
       toast.error("Could not decrypt. Check this asset's key and password.");
     } finally {
       setBusy(false);
       setAssetPassword("");
     }
   }
+
+  if (ws.isPending || ws.isError || !profile)
+    return (
+      <AppShell title="Vault" boardContext={context.search}>
+        <VaultOverview />
+        <EditorFeedback
+          loading={ws.isPending}
+          error={ws.isError || (!ws.isPending && !profile)}
+          empty={false}
+          emptyText=""
+          onRetry={() => void ws.refetch()}
+        />
+      </AppShell>
+    );
 
   return (
     <AppShell
@@ -284,7 +316,7 @@ function VaultPage() {
               setEditingId(null);
             }}
           >
-            Lock
+            Lock Vault
           </Button>
         ) : null
       }
@@ -325,38 +357,16 @@ function VaultPage() {
           </form>
         </DialogContent>
       </Dialog>
-      <Card className="mb-4 p-4">
-        <h2 className="font-medium">Project association and encryption are separate</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Board context is carried to the other sections. Vault key management and legacy Vault
-          notes are workspace-wide, not filtered by project. Current Vault notes use your workspace
-          key. Tasks and Notes can optionally encrypt their content with this same key. Files and
-          Minutes are not Vault-encrypted yet. The planned model lets each project reuse a workspace
-          key or choose its own key; encryption is optional. Project-specific keys are not available
-          yet. Opening Vault always requires your passphrase; it does not restore an unlocked key
-          automatically.
+      <VaultOverview />
+      {operationError && (
+        <p role="alert" className="mb-3 text-sm text-destructive">
+          {operationError}
         </p>
-      </Card>
-      <p className="mb-6 max-w-xl text-sm text-muted-foreground">
-        Notes are encrypted in this browser with OpenPGP. The server keeps only ciphertext and a
-        passphrase-protected private key. Desktop <code className="text-xs">gpg</code> can read
-        anything you export.
-      </p>
-
-      {hasKeys && (
-        <Card className="mb-4 max-w-2xl border-amber-500/40 p-4">
-          <h2 className="font-medium">Protect your recovery path</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Mamyda cannot reset a forgotten vault passphrase. Keep your passphrase and a backup of
-            the encrypted private key in separate safe places; without both, encrypted notes cannot
-            be recovered.
-          </p>
-        </Card>
       )}
 
       {!hasKeys && (
         <Card className="max-w-md p-5">
-          <h2 className="font-display text-xl">Create your key</h2>
+          <h2 className="font-display text-xl">Create a Vault key</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             This passphrase wraps the private key. It is never sent in the clear. Mamyda cannot
             reset it. After creating your vault, download and verify the encrypted key backup.
@@ -366,6 +376,7 @@ function VaultPage() {
             <Input
               id="vp"
               type="password"
+              autoComplete="off"
               value={passphrase}
               onChange={(e) => setPassphrase(e.target.value)}
             />
@@ -378,12 +389,13 @@ function VaultPage() {
 
       {hasKeys && !key && (
         <Card className="max-w-md p-5">
-          <h2 className="font-display text-xl">Unlock</h2>
+          <h2 className="font-display text-xl">Unlock Vault</h2>
           <div className="mt-4 space-y-1.5">
             <Label htmlFor="up">Passphrase</Label>
             <Input
               id="up"
               type="password"
+              autoComplete="off"
               value={passphrase}
               onChange={(e) => setPassphrase(e.target.value)}
               onKeyDown={(e) => {
@@ -391,15 +403,16 @@ function VaultPage() {
               }}
             />
           </div>
-          <Button className="mt-4" disabled={busy} onClick={() => void unlock()}>
-            Unlock
+          <Button className="mt-4" disabled={busy || !passphrase} onClick={() => void unlock()}>
+            {busy ? "Unlocking…" : "Unlock Vault"}
           </Button>
         </Card>
       )}
 
       {key && (
         <>
-          <Card className="mb-4 space-y-4 p-4">
+          <details className="mb-4 space-y-4 rounded-lg border bg-card p-4">
+            <summary className="cursor-pointer font-medium">Key backup and exports</summary>
             <div>
               <h2 className="font-medium">Back up and export</h2>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -454,9 +467,16 @@ function VaultPage() {
               Verification happens in your browser. It checks the selected file against this vault’s
               public key and never uploads the file or passphrase.
             </p>
-          </Card>
+          </details>
           <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
             <div className="space-y-2">
+              <EditorFeedback
+                loading={list.isPending}
+                error={list.isError}
+                empty={(list.data ?? []).length === 0}
+                emptyText="No Vault notes yet. Write a note and choose Encrypt & save."
+                onRetry={() => void list.refetch()}
+              />
               {(list.data ?? []).map((n) => (
                 <button
                   key={n.id}
@@ -467,9 +487,6 @@ function VaultPage() {
                   <p className="text-sm font-medium">{n.title}</p>
                 </button>
               ))}
-              {(list.data ?? []).length === 0 && (
-                <p className="text-sm text-muted-foreground">Vault is empty.</p>
-              )}
             </div>
             <Card className="p-5">
               <div className="space-y-3">
@@ -510,7 +527,7 @@ function VaultPage() {
                       setBody("");
                     }}
                   >
-                    New
+                    New Vault note
                   </Button>
                 </div>
               </div>

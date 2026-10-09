@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { useProjectContext } from "@/components/project-context";
+import { EditorFeedback } from "@/components/editor-feedback";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -81,6 +82,13 @@ function MinutesPage() {
   }, [search.minuteId, list.data, current.id]);
 
   const events = useMemo(() => cal.data?.events ?? [], [cal.data]);
+  const visible = (list.data ?? []).filter(
+    (m) =>
+      !context.invalid &&
+      (!context.project || m.projectId === context.project.id) &&
+      (!context.client ||
+        ws.data?.projects.some((p) => p.id === m.projectId && p.clientId === context.client?.id)),
+  );
 
   async function persist() {
     if (context.invalid) throw new Error("Choose an active project before saving minutes.");
@@ -136,45 +144,40 @@ function MinutesPage() {
           }
           onClick={() => select({ ...emptyMinute(), projectId: context.project?.id ?? null })}
         >
-          New
+          New minutes
         </Button>
       }
     >
       {protection.dialog}
       <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
         <div className="space-y-2">
-          {(list.data ?? [])
-            .filter(
-              (m) =>
-                !context.invalid &&
-                (!context.project || m.projectId === context.project.id) &&
-                (!context.client ||
-                  ws.data?.projects.some(
-                    (p) => p.id === m.projectId && p.clientId === context.client?.id,
-                  )),
-            )
-            .map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                disabled={protection.saving || polishing || protection.recoveryPending}
-                onClick={() => select(m)}
-                className={cn(
-                  "w-full rounded-lg border px-3 py-2 text-left",
-                  selectedId === m.id ? "border-primary bg-card" : "border-border bg-card/60",
-                )}
-              >
-                <p className="text-sm font-medium">{m.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {m.updatedAt ? formatDay(m.updatedAt) : ""}
-                </p>
-              </button>
-            ))}
-          {(list.data ?? []).length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              Capture what was said. Attach a meeting or a project.
-            </p>
-          )}
+          <EditorFeedback
+            loading={list.isPending || ws.isPending}
+            error={list.isError || ws.isError}
+            empty={!context.invalid && visible.length === 0}
+            emptyText="No minutes in this view. Write below or choose New minutes."
+            onRetry={() => {
+              void ws.refetch();
+              void list.refetch();
+            }}
+          />
+          {visible.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              disabled={protection.saving || polishing || protection.recoveryPending}
+              onClick={() => select(m)}
+              className={cn(
+                "w-full rounded-lg border px-3 py-2 text-left",
+                selectedId === m.id ? "border-primary bg-card" : "border-border bg-card/60",
+              )}
+            >
+              <p className="text-sm font-medium">{m.title}</p>
+              <p className="text-xs text-muted-foreground">
+                {m.updatedAt ? formatDay(m.updatedAt) : ""}
+              </p>
+            </button>
+          ))}
         </div>
 
         <Card className="p-5">

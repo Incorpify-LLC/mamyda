@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { TurnstileField } from "@/components/turnstile-field";
@@ -26,9 +27,12 @@ export function MinuteRecordings({
   disabled: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const panelId = useId();
+  const [expanded, setExpanded] = useState(false);
   const settings = useQuery({
     queryKey: ["transcription-settings"],
     queryFn: () => getTranscriptionSettings(),
+    enabled: expanded,
   });
   const jobs = useQuery({
     queryKey: ["media-jobs"],
@@ -46,6 +50,12 @@ export function MinuteRecordings({
   const [action, setAction] = useState<{ id: string; kind: "accept" | "delete" } | null>(null),
     [actionToken, setActionToken] = useState(""),
     [actionReset, setActionReset] = useState(0);
+  const visibleJobs = (jobs.data ?? []).filter((job) => job.status !== "accepted");
+  const ready = visibleJobs.filter((job) => job.status === "ready").length;
+  const processing = visibleJobs.filter((job) =>
+    ["queued", "processing"].includes(job.status),
+  ).length;
+  const failed = visibleJobs.filter((job) => job.status === "error").length;
   async function upload() {
     if (!file) return;
     setRecordingError(null);
@@ -88,123 +98,199 @@ export function MinuteRecordings({
     }
   }
   return (
-    <section className="space-y-3 rounded-md border p-3">
-      <h3 className="text-sm font-medium">Recording → minutes</h3>
-      <p className="text-xs text-muted-foreground">
-        Upload {RECORDING_FORMAT_LABEL} up to 300 MiB and four hours. A progress bar tracks upload;
-        conversion continues in the background. Recordings and extracted audio stay in private
-        temporary local storage, never MinIO, and expire 15 days after upload starts. Review and
-        save minutes before deleting media.
-      </p>
-      {!settings.data?.enabled || !settings.data?.hasKey ? (
-        <p className="text-sm">
-          <Link to="/settings" search={{ section: "llm" }} className="underline">
-            Configure recording transcription in Settings → LLM
-          </Link>
-        </p>
-      ) : null}
-      <input
-        ref={input}
-        type="file"
-        accept={RECORDING_ACCEPT}
-        disabled={disabled || busy}
-        className="hidden"
-        onChange={(e) => {
-          const selected = e.target.files?.[0];
-          if (!selected || disabled || busy) return;
-          const selectionError = recordingSelectionError(selected);
-          if (selectionError) {
-            setRecordingError(selectionError);
-            setFile(null);
-            setTicket(null);
-            setConsent(false);
-            setProgress(0);
-            setToken("");
-            setReset((value) => value + 1);
-            toast.error(selectionError);
-            e.target.value = "";
-            return;
-          }
-          setRecordingError(null);
-          setFile(selected);
-          setTicket(null);
-          setProgress(0);
+    <section aria-label="Recording tools" className="space-y-2 rounded-md border p-3">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        disabled={busy}
+        className="flex min-h-10 w-full items-center justify-between gap-2 text-left text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => {
+          setExpanded((value) => !value);
           setConsent(false);
           setToken("");
           setReset((value) => value + 1);
-          e.target.value = "";
+          setAction(null);
+          setActionToken("");
         }}
-      />
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="cursor-pointer"
-        disabled={disabled || busy}
-        onClick={() => input.current?.click()}
       >
-        {file ? "Change recording" : "Select recording"}
-      </Button>
-      {recordingError && (
-        <p role="alert" className="text-sm text-destructive">
-          {recordingError}
+        Transcribe a recording
+        <ChevronDown
+          aria-hidden="true"
+          className={`size-4 shrink-0 ${expanded ? "rotate-180" : ""}`}
+        />
+      </button>
+      <p className="text-xs text-muted-foreground">
+        MP3, MP4, WAV and more · 300 MiB · up to 4 hours
+      </p>
+      {(ready > 0 || processing > 0 || busy) && (
+        <p role="status" className="text-sm">
+          {busy
+            ? `Uploading ${progress}%`
+            : ready
+              ? `${ready} transcript${ready === 1 ? "" : "s"} ready`
+              : `${processing} recording${processing === 1 ? "" : "s"} converting`}
         </p>
       )}
-      {file && (
-        <div className="space-y-2">
-          <p className="break-words text-sm">
-            {file.name} · {(file.size / 1024 / 1024).toFixed(1)} MiB
+      {jobs.isError && !expanded && (
+        <p role="alert" className="text-sm text-destructive">
+          Could not load recording status. Expand recording tools to retry.
+        </p>
+      )}
+      {failed > 0 && !expanded && (
+        <p role="alert" className="text-sm text-destructive">
+          {failed} recording{failed === 1 ? "" : "s"} failed. Expand recording tools to review; paid
+          calls are not retried automatically.
+        </p>
+      )}
+      <div id={panelId} hidden={!expanded} className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Temporary media is automatically deleted after 15 days. Review and save the transcript
+          before deleting a recording.
+        </p>
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer">Supported formats and storage</summary>
+          <p className="mt-2">
+            {RECORDING_FORMAT_LABEL}. Recordings and extracted audio stay in private temporary local
+            storage, never MinIO. Conversion continues in the background; retention starts when
+            upload starts.
           </p>
-          <p className="text-xs text-muted-foreground" role="status">
-            Recording selected. Confirm permission below, then choose Upload and transcribe.
-            Selection alone does not start an upload.
+        </details>
+        {settings.isPending && (
+          <p role="status" className="text-sm">
+            Loading transcription configuration…
           </p>
-          <label className="flex items-start gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={consent}
-              disabled={disabled || busy}
-              onChange={(e) => setConsent(e.target.checked)}
-            />
-            Send extracted audio to OpenAI / {settings.data?.model} for transcription. API charges
-            and provider retention policies apply. Do not upload recordings without appropriate
-            participant permission.
-          </label>
-          {!ticket && <TurnstileField action="media-upload" resetKey={reset} onToken={setToken} />}
-          <Button
-            type="button"
-            size="sm"
-            disabled={
-              disabled ||
-              busy ||
-              !consent ||
-              (!ticket && !token) ||
-              !settings.data?.enabled ||
-              !settings.data.hasKey
+        )}
+        {settings.isError && (
+          <p role="alert" className="text-sm text-destructive">
+            Could not load transcription configuration.{" "}
+            <button type="button" className="underline" onClick={() => void settings.refetch()}>
+              Retry configuration
+            </button>
+          </p>
+        )}
+        {settings.isSuccess && (!settings.data?.enabled || !settings.data?.hasKey) ? (
+          <p className="text-sm">
+            <Link to="/settings" search={{ section: "llm" }} className="underline">
+              Configure recording transcription in Settings → LLM
+            </Link>
+          </p>
+        ) : null}
+        <input
+          ref={input}
+          type="file"
+          accept={RECORDING_ACCEPT}
+          disabled={disabled || busy}
+          className="hidden"
+          onChange={(e) => {
+            const selected = e.target.files?.[0];
+            if (!selected || disabled || busy) return;
+            const selectionError = recordingSelectionError(selected);
+            if (selectionError) {
+              setRecordingError(selectionError);
+              setFile(null);
+              setTicket(null);
+              setConsent(false);
+              setProgress(0);
+              setToken("");
+              setReset((value) => value + 1);
+              toast.error(selectionError);
+              e.target.value = "";
+              return;
             }
-            onClick={() => void upload()}
-          >
-            {busy ? "Uploading…" : ticket ? "Resume upload" : "Upload and transcribe"}
-          </Button>
-          <progress
-            aria-label="Recording upload progress"
-            className="w-full"
-            value={progress}
-            max={100}
-          />
-          <p className="text-xs">
-            Upload: {progress}%{progress === 100 ? " · awaiting conversion" : ""}
-          </p>
-        </div>
-      )}
-      {jobs.isError && (
-        <Button type="button" variant="outline" onClick={() => void jobs.refetch()}>
-          Retry recording status
+            setRecordingError(null);
+            setFile(selected);
+            setTicket(null);
+            setProgress(0);
+            setConsent(false);
+            setToken("");
+            setReset((value) => value + 1);
+            e.target.value = "";
+          }}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="cursor-pointer"
+          disabled={disabled || busy}
+          onClick={() => input.current?.click()}
+        >
+          {file ? "Change recording" : "Select recording"}
         </Button>
-      )}
-      {(jobs.data ?? [])
-        .filter((job) => job.status !== "accepted")
-        .map((job) => (
+        {recordingError && (
+          <p role="alert" className="text-sm text-destructive">
+            {recordingError}
+          </p>
+        )}
+        {file && (
+          <div className="space-y-2">
+            <p className="break-words text-sm">
+              {file.name} · {(file.size / 1024 / 1024).toFixed(1)} MiB
+            </p>
+            <p className="text-xs text-muted-foreground" role="status">
+              Recording selected. Confirm permission below, then choose Upload and transcribe.
+              Selection alone does not start an upload.
+            </p>
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={consent}
+                disabled={disabled || busy}
+                onChange={(e) => setConsent(e.target.checked)}
+              />
+              Send extracted audio to OpenAI / {settings.data?.model} for transcription. API charges
+              and provider retention policies apply. Do not upload recordings without appropriate
+              participant permission.
+            </label>
+            {expanded && !ticket && (
+              <TurnstileField action="media-upload" resetKey={reset} onToken={setToken} />
+            )}
+            <Button
+              type="button"
+              size="sm"
+              disabled={
+                disabled ||
+                busy ||
+                !consent ||
+                (!ticket && !token) ||
+                !settings.data?.enabled ||
+                !settings.data.hasKey
+              }
+              onClick={() => void upload()}
+            >
+              {busy ? "Uploading…" : ticket ? "Resume upload" : "Upload and transcribe"}
+            </Button>
+            <progress
+              aria-label="Recording upload progress"
+              className="w-full"
+              value={progress}
+              max={100}
+            />
+            <p className="text-xs">
+              Upload: {progress}%{progress === 100 ? " · awaiting conversion" : ""}
+            </p>
+          </div>
+        )}
+        {jobs.isPending && (
+          <p role="status" className="text-sm">
+            Loading recording status…
+          </p>
+        )}
+        {jobs.isSuccess && visibleJobs.length === 0 && (
+          <p className="text-sm text-muted-foreground">No temporary recordings yet.</p>
+        )}
+        {jobs.isError && (
+          <div>
+            <p role="alert" className="mb-2 text-sm text-destructive">
+              Could not load recording status. Existing recordings have not been removed.
+            </p>
+            <Button type="button" variant="outline" onClick={() => void jobs.refetch()}>
+              Retry recording status
+            </Button>
+          </div>
+        )}
+        {visibleJobs.map((job) => (
           <div className="space-y-2 rounded-md bg-muted p-3" key={job.id}>
             <p className="break-words text-sm font-medium">{job.name}</p>
             <p className="text-xs text-muted-foreground">
@@ -272,68 +358,69 @@ export function MinuteRecordings({
             )}
           </div>
         ))}
-      {action && (
-        <div className="space-y-2 rounded-md border p-3">
-          <p className="text-sm">
-            Delete this temporary recording and derived audio permanently?{" "}
-            {action.kind === "accept"
-              ? "The temporary transcript will also be cleared; saved minutes are retained."
-              : "The queued conversion will be cancelled."}
-          </p>
-          <TurnstileField
-            action={action.kind === "accept" ? "media-accept" : "media-delete"}
-            resetKey={actionReset}
-            onToken={setActionToken}
-          />
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="destructive"
-              disabled={!actionToken || disabled || busy}
-              onClick={async () => {
-                setBusy(true);
-                onBusyChange(true);
-                try {
-                  if (action.kind === "accept")
-                    await acceptMediaTranscript({
-                      data: action.id,
-                      headers: { "x-turnstile-response": actionToken },
-                    });
-                  else
-                    await discardMediaRecording({
-                      data: action.id,
-                      headers: { "x-turnstile-response": actionToken },
-                    });
-                  setAction(null);
-                  await jobs.refetch();
-                  toast.success("Temporary recording and audio removed; deletion is permanent");
-                } catch (error) {
-                  toast.error(
-                    error instanceof Error ? error.message : "Could not delete recording",
-                  );
-                } finally {
-                  setBusy(false);
-                  onBusyChange(false);
-                  setActionToken("");
-                  setActionReset((value) => value + 1);
-                }
-              }}
-            >
-              Confirm permanent deletion
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => setAction(null)}
-            >
-              Cancel
-            </Button>
+        {expanded && action && (
+          <div className="space-y-2 rounded-md border p-3">
+            <p className="text-sm">
+              Delete this temporary recording and derived audio permanently?{" "}
+              {action.kind === "accept"
+                ? "The temporary transcript will also be cleared; saved minutes are retained."
+                : "The queued conversion will be cancelled."}
+            </p>
+            <TurnstileField
+              action={action.kind === "accept" ? "media-accept" : "media-delete"}
+              resetKey={actionReset}
+              onToken={setActionToken}
+            />
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                disabled={!actionToken || disabled || busy}
+                onClick={async () => {
+                  setBusy(true);
+                  onBusyChange(true);
+                  try {
+                    if (action.kind === "accept")
+                      await acceptMediaTranscript({
+                        data: action.id,
+                        headers: { "x-turnstile-response": actionToken },
+                      });
+                    else
+                      await discardMediaRecording({
+                        data: action.id,
+                        headers: { "x-turnstile-response": actionToken },
+                      });
+                    setAction(null);
+                    await jobs.refetch();
+                    toast.success("Temporary recording and audio removed; deletion is permanent");
+                  } catch (error) {
+                    toast.error(
+                      error instanceof Error ? error.message : "Could not delete recording",
+                    );
+                  } finally {
+                    setBusy(false);
+                    onBusyChange(false);
+                    setActionToken("");
+                    setActionReset((value) => value + 1);
+                  }
+                }}
+              >
+                Confirm permanent deletion
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => setAction(null)}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

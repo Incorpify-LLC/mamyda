@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [tailwindcss(), react()],
   resolve: {
     alias: [
+      { find: "@/lib/mamyda/private-content", replacement: stub },
       {
         find: "@/lib/mamyda/hooks",
         replacement: fileURLToPath(new URL("./context-stubs.ts", import.meta.url)),

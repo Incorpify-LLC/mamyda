@@ -135,6 +135,7 @@ try {
   await page.screenshot({ path: "screenshots/chat-redesign-mobile.png", fullPage: true });
 
   await page.goto("http://127.0.0.1:8082/tests/browser/chat-fixture.html?recording");
+  await page.getByRole("button", { name: "Transcribe a recording", exact: true }).click();
   await page.getByRole("button", { name: "Select recording", exact: true }).waitFor();
   const input = page.locator('input[type="file"]');
   assert.match(await input.getAttribute("accept"), /\.wav/);

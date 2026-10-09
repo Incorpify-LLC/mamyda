@@ -141,8 +141,7 @@ function FilesPage() {
         <Link to="/clients" className="underline">
           Clients/Projects
         </Link>
-        . These uploads are not Vault-encrypted; optional project-key encryption is being prepared
-        separately.
+        . Uploads are not Vault-encrypted. Encrypt sensitive files on your device before uploading.
       </p>
       {ws.isError && (
         <p role="alert">
