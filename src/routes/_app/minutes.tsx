@@ -50,8 +50,14 @@ function MinutesPage() {
     list.data?.find((item) => item.id === search.minuteId)?.projectId,
   );
   const cal = useCalendar();
-  const [current, setCurrent] = useState<Minute>(emptyMinute());
-  const [baseline, setBaseline] = useState<Minute>(emptyMinute());
+  const [current, setCurrent] = useState<Minute>(() => ({
+    ...emptyMinute(),
+    projectId: context.project?.id ?? null,
+  }));
+  const [baseline, setBaseline] = useState<Minute>(() => ({
+    ...emptyMinute(),
+    projectId: context.project?.id ?? null,
+  }));
   const scope = `${context.client?.id ?? ""}/${context.project?.id ?? ""}/${context.invalid}`;
   const previousScope = useRef(scope);
   useEffect(() => {
@@ -77,6 +83,7 @@ function MinutesPage() {
   const events = useMemo(() => cal.data?.events ?? [], [cal.data]);
 
   async function persist() {
+    if (context.invalid) throw new Error("Choose an active project before saving minutes.");
     const captcha = await verify("minute-save", "Saving minutes");
     const id = await saveMinute({
       data: {
@@ -280,7 +287,10 @@ function MinutesPage() {
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button disabled={protection.saving} onClick={() => void protection.save()}>
+                <Button
+                  disabled={context.invalid || context.loading || protection.saving}
+                  onClick={() => void protection.save()}
+                >
                   {protection.saving ? "Saving…" : "Save"}
                 </Button>
                 <LLMEditButton
