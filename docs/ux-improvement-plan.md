@@ -8,7 +8,7 @@ The authenticated review and user decisions define this sequence:
 4. [#20](https://github.com/Incorpify-LLC/mamyda/issues/20): progressively disclosed editors and clear current Vault capabilities.
 5. [#21](https://github.com/Incorpify-LLC/mamyda/issues/21): integration status, sync clarity and quieter settings without alert dispatch on read.
 
-## First increment: implemented locally
+## First increment: deployed
 
 Shared light/dark tokens are neutral/blue with smaller corners. All display headings use the sans-serif family; the serif font download was removed. Client identity colors remain unchanged.
 
@@ -28,4 +28,10 @@ Commands:
 - `node scripts/board-ui-e2e.mjs`
 - `node scripts/chat-ui-e2e.mjs`
 
-Browser tests use isolated in-memory fixtures, not customer data or production CAPTCHA. Screenshots are under ignored `screenshots/board-*.png`; the local fixture was also visually reviewed in connected Chrome. Production integration testing and user feedback remain pending release approval. No commit, push or deployment was performed; issues remain open until the release is validated.
+Browser tests use isolated in-memory fixtures, not customer data or production CAPTCHA. Screenshots are under ignored `screenshots/board-*.png`; the local fixture was also visually reviewed in connected Chrome.
+
+Released with user approval as `board-ux-20261009-17` on pi03; application source pushed to main in `82b1d7a`. Candidate and live health checks passed. Connected authenticated Chrome verified desktop Kanban and mobile grouped-list defaults, sans-serif typography, the blue/neutral palette, project-local creation and no page overflow at 390px. Public smoke verified the release, protected routes/assets and rejection of anonymous recording uploads and missing-CAPTCHA OTP requests. Existing customer tasks were not changed.
+
+Only the app container was replaced; the database, secrets, worker and tunnel were preserved. No migration was required. Image: `a94f41192b9a`. Rollback image: `mamyda-feedback-rollback:board-ux-20261009-17-app`; private source/database snapshots: `/home/sanjayu/mamyda-rollbacks/board-ux-20261009-17/` on pi03. Roll back code without restoring the database unless separately authorized.
+
+GitHub CI run 37927521439 failed at the dependency audit, before the other checks: the unchanged lockfile contains high/critical transitive findings. Local app tests, type checking, browser checks and the production build passed; this is not a claim of green CI. Dependency remediation is a separate follow-up. #17 is complete; #18–#21 remain open.
