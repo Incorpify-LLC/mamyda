@@ -4,7 +4,7 @@ import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
 const origin = "https://mamyda.incorpify.in";
-const expected = process.env.EXPECTED_RELEASE ?? "submission-verification-20261009-18";
+const expected = process.env.EXPECTED_RELEASE ?? "project-context-20261009-19";
 assert.equal((await (await fetch(`${origin}/api/health`)).json()).status, "ok");
 assert.equal((await (await fetch(`${origin}/release.json`)).json()).release, expected);
 const denied = await fetch(`${origin}/api/media/uploads/00000000-0000-4000-8000-000000000000`, {
@@ -35,7 +35,7 @@ try {
       if (response.url().startsWith(`${origin}/assets/`) && response.status() >= 400)
         failed.push(response.status());
     });
-    for (const route of ["/chat", "/minutes", "/settings"]) {
+    for (const route of ["/chat", "/minutes", "/settings", "/preferences"]) {
       await page.goto(origin + route);
       await page.getByRole("button", { name: "Email me a code", exact: true }).waitFor();
       await page.waitForTimeout(700);

@@ -1,5 +1,5 @@
 {
-  "release": "submission-verification-20261009-18",
+  "release": "project-context-20261009-19",
   "mode": "production",
-  "description": "Ordinary saves use one on-demand security check and continue automatically after fresh verification. Drafts survive cancellation and failures. Explicit AI, paid-transcription and destructive-action confirmations are preserved."
+  "description": "Shared Board project context, portable direct links and explicit unavailable-project recovery. Four mobile navigation destinations with More, plus browser-local personal display preferences separate from workspace integrations."
 }

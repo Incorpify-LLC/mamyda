@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { useProjectContext } from "@/components/project-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -33,11 +34,24 @@ function NotesPage() {
   const search = Route.useSearch();
   const list = useNotes();
   const ws = useWorkspace();
+  const context = useProjectContext(
+    false,
+    list.data?.find((item) => item.id === search.noteId)?.projectId,
+  );
   const [filter, setFilter] = useState<string | null>(null);
-  const [projectFilter, setProjectFilter] = useState<string | null>(search.projectId ?? null);
   const [current, setCurrent] = useState<Note | null>(null);
   const [draft, setDraft] = useState("");
   const [titleDraft, setTitleDraft] = useState("");
+  const scope = `${context.client?.id ?? ""}/${context.project?.id ?? ""}/${context.invalid}`;
+  const previousScope = useRef(scope);
+  useEffect(() => {
+    if (previousScope.current !== scope && !search.noteId) {
+      setCurrent(null);
+      setDraft("");
+      setTitleDraft("");
+    }
+    previousScope.current = scope;
+  }, [scope, search.noteId]);
   useEffect(() => setTitleDraft(current?.title ?? ""), [current?.id, current?.title]);
   const [encryptContent, setEncryptContent] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
@@ -57,14 +71,11 @@ function NotesPage() {
   const visible = (list.data ?? []).filter(
     (n) =>
       (!filter || n.tags.includes(filter)) &&
-      (!projectFilter || n.projectId === projectFilter) &&
-      (!search.clientId ||
-        ws.data?.projects.some((p) => p.id === n.projectId && p.clientId === search.clientId)),
+      !context.invalid &&
+      (!context.project || n.projectId === context.project.id) &&
+      (!context.client ||
+        ws.data?.projects.some((p) => p.id === n.projectId && p.clientId === context.client?.id)),
   );
-
-  useEffect(() => {
-    setProjectFilter(search.projectId ?? null);
-  }, [search.projectId]);
 
   const projectById = useMemo(
     () => new Map((ws.data?.projects ?? []).map((p) => [p.id, p])),
@@ -159,15 +170,18 @@ function NotesPage() {
   return (
     <AppShell
       title="Notes"
+      boardContext={context.search}
       action={
         <Button
           size="sm"
-          disabled={protection.saving || protection.recoveryPending}
+          disabled={
+            context.invalid || context.loading || protection.saving || protection.recoveryPending
+          }
           onClick={() =>
             protection.request(() => {
               setCurrent({
                 id: "",
-                projectId: search.projectId ?? null,
+                projectId: context.project?.id ?? null,
                 title: "",
                 body: "",
                 tags: [],
@@ -211,35 +225,6 @@ function NotesPage() {
           </button>
         ))}
       </div>
-      <div className="mb-4 flex flex-wrap gap-1.5" aria-label="Filter notes by project">
-        <button
-          type="button"
-          onClick={() => setProjectFilter(null)}
-          className={cn(
-            "rounded-full px-2.5 py-1 text-xs",
-            !projectFilter ? "bg-foreground text-background" : "bg-muted",
-          )}
-        >
-          All projects
-        </button>
-        {(ws.data?.projects ?? [])
-          .filter((project) => (list.data ?? []).some((note) => note.projectId === project.id))
-          .map((project) => (
-            <button
-              key={project.id}
-              type="button"
-              onClick={() => setProjectFilter(project.id)}
-              className={cn(
-                "rounded-full px-2.5 py-1 text-xs",
-                projectFilter === project.id ? "bg-primary text-primary-foreground" : "bg-muted",
-              )}
-            >
-              {project.name}
-              {project.archived ? " · archived" : ""}
-            </button>
-          ))}
-      </div>
-
       <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
         <div className="space-y-2">
           {visible.map((n) => (

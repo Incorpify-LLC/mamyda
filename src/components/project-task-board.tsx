@@ -12,6 +12,7 @@ import {
 import type { Task } from "@/lib/mamyda/types";
 import { formatDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { PREFERENCES_EVENT } from "@/lib/personal-preferences";
 
 export function ProjectTaskBoard({
   tasks,
@@ -41,7 +42,13 @@ export function ProjectTaskBoard({
     };
     update();
     media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
+    window.addEventListener(PREFERENCES_EVENT, update);
+    window.addEventListener("storage", update);
+    return () => {
+      media.removeEventListener("change", update);
+      window.removeEventListener(PREFERENCES_EVENT, update);
+      window.removeEventListener("storage", update);
+    };
   }, []);
   function choose(next: TaskView) {
     setView(next);

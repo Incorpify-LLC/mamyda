@@ -18,6 +18,10 @@ import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Title as SheetTitle } from "@radix-ui/react-dialog";
+import { ProjectContextPicker } from "@/components/project-context";
+import { useBoardMemory } from "@/components/board-context-memory";
+import { readPreferences, PREFERENCES_EVENT } from "@/lib/personal-preferences";
 import { GlobalSearch } from "@/components/global-search";
 import { BOARD_SECTIONS, boardSearchContext, isBoardPath } from "@/lib/board-navigation";
 
@@ -28,10 +32,14 @@ const NAV = [
   { to: "/clients", label: "Clients/Projects", icon: Users },
   { to: "/chat", label: "LLM Chat", icon: MessageSquare },
   { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/preferences", label: "Preferences", icon: Settings },
 ] as const;
 
 function NavLinks({ onNavigate, compact }: { onNavigate?: () => void; compact?: boolean }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const location = useRouterState({ select: (s) => s.location });
+  const search = location.search;
+  const memory = useBoardMemory();
   return (
     <nav className={cn("flex", compact ? "flex-row gap-1" : "flex-col gap-1")}>
       {NAV.map((item) => {
@@ -46,6 +54,13 @@ function NavLinks({ onNavigate, compact }: { onNavigate?: () => void; compact?: 
           <Link
             key={item.to}
             to={item.to}
+            search={
+              item.to === "/board"
+                ? isBoardPath(pathname)
+                  ? boardSearchContext(search)
+                  : memory.search
+                : {}
+            }
             onClick={onNavigate}
             className={cn(
               "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
@@ -69,32 +84,54 @@ export function AppShell({
   action,
   children,
   boardContext,
+  contextDisabled,
 }: {
   title: string;
   action?: ReactNode;
   children: ReactNode;
   boardContext?: { clientId?: string; projectId?: string };
+  contextDisabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const search = useRouterState({ select: (s) => s.location.search });
-  const context = boardContext ?? boardSearchContext(search);
+  const location = useRouterState({ select: (s) => s.location });
+  const search = location.search;
+  const memory = useBoardMemory();
+  const context =
+    boardContext ?? (isBoardPath(pathname) ? boardSearchContext(search) : memory.search);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("mamyda-theme");
-    const next = saved
-      ? saved === "dark"
-      : window.matchMedia("(prefers-color-scheme: dark)").matches;
-    setDark(next);
-    document.documentElement.classList.toggle("dark", next);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      const preferences = readPreferences(localStorage);
+      const next =
+        preferences.theme === "dark" || (preferences.theme === "system" && media.matches);
+      setDark(next);
+      document.documentElement.classList.toggle("dark", next);
+      document.documentElement.dataset.density = preferences.density;
+    };
+    apply();
+    window.addEventListener(PREFERENCES_EVENT, apply);
+    window.addEventListener("storage", apply);
+    media.addEventListener("change", apply);
+    return () => {
+      window.removeEventListener(PREFERENCES_EVENT, apply);
+      window.removeEventListener("storage", apply);
+      media.removeEventListener("change", apply);
+    };
   }, []);
 
   function toggleTheme() {
     const next = !dark;
     setDark(next);
     document.documentElement.classList.toggle("dark", next);
-    window.localStorage.setItem("mamyda-theme", next ? "dark" : "light");
+    try {
+      window.localStorage.setItem("mamyda-theme", next ? "dark" : "light");
+      window.dispatchEvent(new Event(PREFERENCES_EVENT));
+    } catch {
+      /* Keep the in-session theme. */
+    }
   }
 
   return (
@@ -142,7 +179,7 @@ export function AppShell({
           {isBoardPath(pathname) && (
             <nav
               aria-label="Board sections"
-              className="mb-5 grid grid-cols-5 gap-1 rounded-lg border border-border bg-card p-1 sm:flex sm:flex-wrap"
+              className="mb-3 flex gap-1 overflow-x-auto rounded-lg border border-border bg-card p-1"
             >
               {BOARD_SECTIONS.map((section, index) => {
                 const Icon = [Columns3, FileText, NotebookPen, FileText, Lock][index];
@@ -154,7 +191,7 @@ export function AppShell({
                     search={context}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex items-center justify-center gap-2 rounded-md px-2 py-2 text-sm font-medium sm:px-3",
+                      "flex shrink-0 flex-1 items-center justify-center gap-2 rounded-md px-2 py-2 text-sm font-medium sm:px-3",
                       active
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:bg-muted",
@@ -167,6 +204,7 @@ export function AppShell({
               })}
             </nav>
           )}
+          {isBoardPath(pathname) && <ProjectContextPicker disabled={contextDisabled} />}
           {children}
         </div>
       </div>
@@ -175,7 +213,7 @@ export function AppShell({
         aria-label="Primary navigation"
         className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-border bg-card/95 px-1 py-1 md:hidden"
       >
-        {NAV.map((item) => {
+        {NAV.slice(0, 3).map((item) => {
           const Icon = item.icon;
           const active =
             item.to === "/"
@@ -187,6 +225,7 @@ export function AppShell({
             <Link
               key={item.to}
               to={item.to}
+              search={item.to === "/board" ? context : {}}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] font-medium transition-colors",
@@ -198,11 +237,21 @@ export function AppShell({
             </Link>
           );
         })}
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="More navigation"
+          aria-expanded={open}
+          className="flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-md text-[10px] font-medium text-muted-foreground"
+        >
+          <Menu className="size-4" aria-hidden="true" />
+          More
+        </button>
       </nav>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="left" className="pt-12">
-          <p className="font-display mb-4 px-3 text-2xl">Mamyda</p>
+          <SheetTitle className="font-display mb-4 px-3 text-2xl">Navigate Mamyda</SheetTitle>
           <NavLinks onNavigate={() => setOpen(false)} />
           <div className="mt-6 px-1">
             <UserButton />

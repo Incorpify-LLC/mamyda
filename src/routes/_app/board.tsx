@@ -5,6 +5,7 @@ import { ContentProtection } from "@/components/content-protection";
 import { encryptPrivateContent } from "@/lib/content-crypto";
 import { LLMEditButton } from "@/components/llm-edit-button";
 import { AppShell } from "@/components/app-shell";
+import { useProjectContext } from "@/components/project-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -38,8 +39,10 @@ function priorityTone(p: string) {
 function BoardPage() {
   const search = Route.useSearch();
   const ws = useWorkspace();
-  const [clientId, setClientId] = useState<string | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const context = useProjectContext(
+    true,
+    ws.data?.tasks.find((item) => item.id === search.taskId)?.projectId,
+  );
   const [task, setTask] = useState<Partial<Task> | null>(null);
   const [allProjectsView, setAllProjectsView] = useState(false);
   const [workloadClient, setWorkloadClient] = useState("all");
@@ -53,19 +56,13 @@ function BoardPage() {
 
   useEffect(() => {
     if (!ws.data) return;
-    if (search.clientId) setClientId(search.clientId);
-    if (search.projectId) setProjectId(search.projectId);
     if (search.taskId) {
       const match = ws.data.tasks.find((item) => item.id === search.taskId);
       if (match) setTask(match);
     }
   }, [ws.data, search.clientId, search.projectId, search.taskId]);
 
-  const selectedClient = clientId ? clients.find((c) => c.id === clientId) : clients[0];
-  const clientProjects = projects.filter((p) => p.clientId === selectedClient?.id);
-  const selectedProject = projectId
-    ? (clientProjects.find((p) => p.id === projectId) ?? clientProjects[0])
-    : clientProjects[0];
+  const selectedProject = context.project;
   const boardTasks = tasks.filter((t) => t.projectId === selectedProject?.id);
   const activeClients = clients.filter((client) => !client.archived);
   const activeProjects = projects.filter(
@@ -103,14 +100,7 @@ function BoardPage() {
   }
 
   return (
-    <AppShell
-      boardContext={
-        allProjectsView
-          ? {}
-          : { clientId: clientId ?? undefined, projectId: projectId ?? undefined }
-      }
-      title="Board"
-    >
+    <AppShell boardContext={context.search} title="Board">
       <p className="mb-3 text-sm text-muted-foreground">
         Manage client and project details in{" "}
         <Link to="/clients" className="underline">
@@ -136,57 +126,6 @@ function BoardPage() {
           All projects
         </Button>
       </div>
-      {!allProjectsView && (
-        <div className="mb-4 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <Label className="mb-1 block text-xs text-muted-foreground" htmlFor="board-client">
-                Client
-              </Label>
-              <select
-                id="board-client"
-                aria-label="Select client"
-                className="h-10 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm"
-                value={selectedClient?.id ?? ""}
-                onChange={(event) => {
-                  setClientId(event.target.value || null);
-                  setProjectId(null);
-                }}
-              >
-                {clients.length === 0 && <option value="">No clients yet</option>}
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <Label className="mb-1 block text-xs text-muted-foreground" htmlFor="board-project">
-                Project
-              </Label>
-              <select
-                id="board-project"
-                aria-label="Select project"
-                className="h-10 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm"
-                value={selectedProject?.id ?? ""}
-                disabled={!selectedClient}
-                onChange={(event) => setProjectId(event.target.value || null)}
-              >
-                {clientProjects.length === 0 && <option value="">No projects yet</option>}
-                {clientProjects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
-
       {allProjectsView ? (
         <section aria-label="All project tasks">
           <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

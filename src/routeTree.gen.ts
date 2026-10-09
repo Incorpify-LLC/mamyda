@@ -19,6 +19,7 @@ import { Route as AppClientsRouteImport } from './routes/_app/clients'
 import { Route as AppFilesRouteImport } from './routes/_app/files'
 import { Route as AppMinutesRouteImport } from './routes/_app/minutes'
 import { Route as AppNotesRouteImport } from './routes/_app/notes'
+import { Route as AppPreferencesRouteImport } from './routes/_app/preferences'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppVaultRouteImport } from './routes/_app/vault'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
@@ -81,6 +82,11 @@ const AppMinutesRoute = AppMinutesRouteImport.update({
 const AppNotesRoute = AppNotesRouteImport.update({
   id: '/notes',
   path: '/notes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPreferencesRoute = AppPreferencesRouteImport.update({
+  id: '/preferences',
+  path: '/preferences',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -167,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/files': typeof AppFilesRoute
   '/minutes': typeof AppMinutesRoute
   '/notes': typeof AppNotesRoute
+  '/preferences': typeof AppPreferencesRoute
   '/settings': typeof AppSettingsRoute
   '/vault': typeof AppVaultRoute
   '/api/health': typeof ApiHealthRoute
@@ -191,6 +198,7 @@ export interface FileRoutesByTo {
   '/files': typeof AppFilesRoute
   '/minutes': typeof AppMinutesRoute
   '/notes': typeof AppNotesRoute
+  '/preferences': typeof AppPreferencesRoute
   '/settings': typeof AppSettingsRoute
   '/vault': typeof AppVaultRoute
   '/api/health': typeof ApiHealthRoute
@@ -218,6 +226,7 @@ export interface FileRoutesById {
   '/_app/files': typeof AppFilesRoute
   '/_app/minutes': typeof AppMinutesRoute
   '/_app/notes': typeof AppNotesRoute
+  '/_app/preferences': typeof AppPreferencesRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/vault': typeof AppVaultRoute
   '/api/health': typeof ApiHealthRoute
@@ -246,6 +255,7 @@ export interface FileRouteTypes {
     | '/files'
     | '/minutes'
     | '/notes'
+    | '/preferences'
     | '/settings'
     | '/vault'
     | '/api/health'
@@ -270,6 +280,7 @@ export interface FileRouteTypes {
     | '/files'
     | '/minutes'
     | '/notes'
+    | '/preferences'
     | '/settings'
     | '/vault'
     | '/api/health'
@@ -296,6 +307,7 @@ export interface FileRouteTypes {
     | '/_app/files'
     | '/_app/minutes'
     | '/_app/notes'
+    | '/_app/preferences'
     | '/_app/settings'
     | '/_app/vault'
     | '/api/health'
@@ -400,6 +412,13 @@ declare module '@tanstack/react-router' {
       path: '/notes'
       fullPath: '/notes'
       preLoaderRoute: typeof AppNotesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/preferences': {
+      id: '/_app/preferences'
+      path: '/preferences'
+      fullPath: '/preferences'
+      preLoaderRoute: typeof AppPreferencesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings': {
@@ -511,6 +530,7 @@ interface AppRouteChildren {
   AppFilesRoute: typeof AppFilesRoute
   AppMinutesRoute: typeof AppMinutesRoute
   AppNotesRoute: typeof AppNotesRoute
+  AppPreferencesRoute: typeof AppPreferencesRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppVaultRoute: typeof AppVaultRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -524,6 +544,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppFilesRoute: AppFilesRoute,
   AppMinutesRoute: AppMinutesRoute,
   AppNotesRoute: AppNotesRoute,
+  AppPreferencesRoute: AppPreferencesRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppVaultRoute: AppVaultRoute,
   AppIndexRoute: AppIndexRoute,

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type { PrivateKey } from "openpgp";
 import { AppShell } from "@/components/app-shell";
+import { useProjectContext } from "@/components/project-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -33,6 +34,7 @@ export const Route = createFileRoute("/_app/vault")({
 });
 
 function VaultPage() {
+  const context = useProjectContext();
   const user = useCurrentUser();
   const ws = useWorkspace();
   const list = useVaultList();
@@ -268,6 +270,7 @@ function VaultPage() {
   return (
     <AppShell
       title="Vault"
+      boardContext={context.search}
       action={
         key ? (
           <Button
@@ -325,11 +328,13 @@ function VaultPage() {
       <Card className="mb-4 p-4">
         <h2 className="font-medium">Project association and encryption are separate</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Current Vault notes use your workspace key. Tasks and Notes can optionally encrypt their
-          content with this same key. Files and Minutes are not Vault-encrypted yet. The planned
-          model lets each project reuse a workspace key or choose its own key; encryption is
-          optional. Project-specific keys are not available yet. Opening Vault always requires your
-          passphrase; it does not restore an unlocked key automatically.
+          Board context is carried to the other sections. Vault key management and legacy Vault
+          notes are workspace-wide, not filtered by project. Current Vault notes use your workspace
+          key. Tasks and Notes can optionally encrypt their content with this same key. Files and
+          Minutes are not Vault-encrypted yet. The planned model lets each project reuse a workspace
+          key or choose its own key; encryption is optional. Project-specific keys are not available
+          yet. Opening Vault always requires your passphrase; it does not restore an unlocked key
+          automatically.
         </p>
       </Card>
       <p className="mb-6 max-w-xl text-sm text-muted-foreground">

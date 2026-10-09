@@ -2,9 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/app-shell";
+import { useProjectContext } from "@/components/project-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { TurnstileField } from "@/components/turnstile-field";
 import { boardSearchContext } from "@/lib/board-navigation";
@@ -33,14 +33,9 @@ type QueueItem = {
 };
 function FilesPage() {
   const fileInput = useRef<HTMLInputElement>(null);
-  const search = Route.useSearch();
   const ws = useWorkspace();
-  const [clientId, setClient] = useState(search.clientId ?? "");
-  const [projectId, setProject] = useState(search.projectId ?? "");
-  const clients = ws.data?.clients.filter((c) => !c.archived) ?? [];
-  const client = clients.find((c) => c.id === clientId) ?? clients[0];
-  const projects = ws.data?.projects.filter((p) => p.clientId === client?.id && !p.archived) ?? [];
-  const project = projects.find((p) => p.id === projectId) ?? projects[0];
+  const context = useProjectContext(true);
+  const { client, project } = context;
   const listing = useQuery({
     queryKey: ["files", client?.id],
     enabled: Boolean(client),
@@ -57,6 +52,11 @@ function FilesPage() {
   const [deleteToken, setDeleteToken] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteReset, setDeleteReset] = useState(0);
+  useEffect(() => {
+    setQueue([]);
+    setToken("");
+    setReset((value) => value + 1);
+  }, [client?.id, project?.id]);
   useEffect(() => {
     if (!busy) return;
     const warn = (event: BeforeUnloadEvent) => {
@@ -135,7 +135,7 @@ function FilesPage() {
     direction,
   );
   return (
-    <AppShell title="Files" boardContext={{ clientId: client?.id, projectId: project?.id }}>
+    <AppShell title="Files" boardContext={context.search} contextDisabled={busy}>
       <p className="mb-4 text-sm text-muted-foreground">
         Files belong to a client and project. Manage their details in{" "}
         <Link to="/clients" className="underline">
@@ -144,53 +144,6 @@ function FilesPage() {
         . These uploads are not Vault-encrypted; optional project-key encryption is being prepared
         separately.
       </p>
-      <div className="mb-4 grid gap-3 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="files-client">Client</Label>
-          <select
-            id="files-client"
-            disabled={busy}
-            className="mt-1 h-10 w-full rounded-md border bg-card px-3"
-            value={client?.id ?? ""}
-            onChange={(e) => {
-              setClient(e.target.value);
-              setProject("");
-              setQueue([]);
-            }}
-          >
-            <option value="" disabled>
-              Select client
-            </option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label htmlFor="files-project">Project</Label>
-          <select
-            id="files-project"
-            disabled={busy}
-            className="mt-1 h-10 w-full rounded-md border bg-card px-3"
-            value={project?.id ?? ""}
-            onChange={(e) => {
-              setProject(e.target.value);
-              setQueue([]);
-            }}
-          >
-            <option value="" disabled>
-              Select project
-            </option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
       {ws.isError && (
         <p role="alert">
           Could not load projects. <Button onClick={() => void ws.refetch()}>Retry</Button>

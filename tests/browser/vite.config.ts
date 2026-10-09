@@ -7,6 +7,10 @@ export default defineConfig({
   plugins: [tailwindcss(), react()],
   resolve: {
     alias: [
+      {
+        find: "@/lib/mamyda/hooks",
+        replacement: fileURLToPath(new URL("./context-stubs.ts", import.meta.url)),
+      },
       { find: "@/lib/auth/public-config", replacement: stub },
       { find: "@/lib/auth/gates", replacement: stub },
       { find: "@/components/global-search", replacement: stub },

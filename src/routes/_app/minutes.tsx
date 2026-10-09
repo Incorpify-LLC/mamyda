@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { useProjectContext } from "@/components/project-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -44,9 +45,23 @@ function MinutesPage() {
   const search = Route.useSearch();
   const list = useMinutes();
   const ws = useWorkspace();
+  const context = useProjectContext(
+    false,
+    list.data?.find((item) => item.id === search.minuteId)?.projectId,
+  );
   const cal = useCalendar();
   const [current, setCurrent] = useState<Minute>(emptyMinute());
   const [baseline, setBaseline] = useState<Minute>(emptyMinute());
+  const scope = `${context.client?.id ?? ""}/${context.project?.id ?? ""}/${context.invalid}`;
+  const previousScope = useRef(scope);
+  useEffect(() => {
+    if (previousScope.current !== scope && !search.minuteId) {
+      const blank = { ...emptyMinute(), projectId: context.project?.id ?? null };
+      setCurrent(blank);
+      setBaseline(blank);
+    }
+    previousScope.current = scope;
+  }, [scope, search.minuteId, context.project?.id]);
   const [polishing, setPolishing] = useState(false);
   const selectedId = current.id || null;
 
@@ -101,11 +116,18 @@ function MinutesPage() {
   return (
     <AppShell
       title="Minutes"
+      boardContext={context.search}
       action={
         <Button
           size="sm"
-          disabled={protection.saving || polishing || protection.recoveryPending}
-          onClick={() => select({ ...emptyMinute(), projectId: search.projectId ?? null })}
+          disabled={
+            context.invalid ||
+            context.loading ||
+            protection.saving ||
+            polishing ||
+            protection.recoveryPending
+          }
+          onClick={() => select({ ...emptyMinute(), projectId: context.project?.id ?? null })}
         >
           New
         </Button>
@@ -117,10 +139,11 @@ function MinutesPage() {
           {(list.data ?? [])
             .filter(
               (m) =>
-                (!search.projectId || m.projectId === search.projectId) &&
-                (!search.clientId ||
+                !context.invalid &&
+                (!context.project || m.projectId === context.project.id) &&
+                (!context.client ||
                   ws.data?.projects.some(
-                    (p) => p.id === m.projectId && p.clientId === search.clientId,
+                    (p) => p.id === m.projectId && p.clientId === context.client?.id,
                   )),
             )
             .map((m) => (
