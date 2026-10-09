@@ -12,6 +12,8 @@ Increment #18 is deployed and complete; see [submission verification](submission
 
 Increment #19 is deployed and complete; see [shared Board context](project-context.md). Signed-in Chrome verified portable project selection, direct links and recovery, simpler mobile navigation, separate personal preferences and the Minutes project default. No customer content was modified.
 
+Increment #20 is deployed and complete; see [quieter editors and honest Vault controls](editor-disclosure.md). Recording tools and optional guidance are collapsed, creation labels are specific, and Vault recovery warnings stay visible. Live signed-in mobile checks passed without modifying or decrypting customer content.
+
 ## First increment: deployed
 
 Shared light/dark tokens are neutral/blue with smaller corners. All display headings use the sans-serif family; the serif font download was removed. Client identity colors remain unchanged.
@@ -38,4 +40,4 @@ Released with user approval as `board-ux-20261009-17` on pi03; application sourc
 
 Only the app container was replaced; the database, secrets, worker and tunnel were preserved. No migration was required. Image: `a94f41192b9a`. Rollback image: `mamyda-feedback-rollback:board-ux-20261009-17-app`; private source/database snapshots: `/home/sanjayu/mamyda-rollbacks/board-ux-20261009-17/` on pi03. Roll back code without restoring the database unless separately authorized.
 
-GitHub CI run 37927521439 failed at the dependency audit, before the other checks: the unchanged lockfile contains high/critical transitive findings. Local app tests, type checking, browser checks and the production build passed; this is not a claim of green CI. Dependency remediation is tracked separately in #22. #17–#19 are complete; #20 and #21 remain open.
+GitHub CI run 37927521439 failed at the dependency audit, before the other checks: the unchanged lockfile contains high/critical transitive findings. Local app tests, type checking, browser checks and the production build passed; this is not a claim of green CI. Dependency remediation is tracked separately in #22. #17–#20 are complete; #21 remains open.
