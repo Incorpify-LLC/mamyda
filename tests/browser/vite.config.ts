@@ -7,6 +7,15 @@ export default defineConfig({
   plugins: [tailwindcss(), react()],
   resolve: {
     alias: [
+      ...[
+        "@/lib/mamyda/calendar",
+        "@/lib/mamyda/alerts",
+        "@/lib/mamyda/telegram",
+        "@/components/llm-settings",
+      ].map((find) => ({
+        find,
+        replacement: fileURLToPath(new URL("./integration-stubs.ts", import.meta.url)),
+      })),
       { find: "@/lib/mamyda/private-content", replacement: stub },
       {
         find: "@/lib/mamyda/hooks",

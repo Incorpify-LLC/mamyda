@@ -59,3 +59,5 @@ export async function upsertClient(input: unknown) {
 export const upsertProject = upsertClient;
 export const archiveClient = upsertClient;
 export const archiveProject = upsertClient;
+export async function updateProfile() { throw new Error("Profile writes disabled in fixture"); }
+export async function clearSampleData() { throw new Error("Sample deletion disabled in fixture"); }

@@ -63,6 +63,8 @@ export type CalendarSource = {
   lastSyncedAt: string | null;
   lastError: string | null;
   lastImportedCount?: number | null;
+  accountEmail?: string | null;
+  connected?: boolean;
 };
 
 export type CalendarEvent = {

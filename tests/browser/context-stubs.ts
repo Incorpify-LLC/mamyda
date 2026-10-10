@@ -1,5 +1,8 @@
 // Isolated read-only workspace data. No customer data or network writes.
+import { useIntegrationWorkspace } from "./integration-stubs";
+export { useCalendar, useAlerts } from "./integration-stubs";
 export function useWorkspace() {
+  if (document.title === "Isolated integration UI") return useIntegrationWorkspace();
   return {
     data: {
       clients: [

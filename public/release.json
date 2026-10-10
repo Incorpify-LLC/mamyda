@@ -1,5 +1,5 @@
 {
-  "release": "editor-disclosure-20261009-20",
+  "release": "integration-clarity-20261010-21",
   "mode": "production",
-  "description": "Quieter Minutes recording tools, clear New note and New minutes actions, honest current Vault capabilities and prominent irreversible passphrase-loss warnings, with visible loading and failure states."
+  "description": "Calendar account identity and sync recovery, quieter connection tools and delivery logs, accessible Settings tabs and passive alert reads."
 }

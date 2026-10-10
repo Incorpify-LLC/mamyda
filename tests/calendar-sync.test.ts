@@ -46,6 +46,7 @@ const event: ImportedEvent = {
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(readFileSync("migrations/0002_mamyda.sql", "utf8"));
+  await db.exec(readFileSync("migrations/0004_calendar_oauth.sql", "utf8"));
   await db.exec(readFileSync("migrations/0005_calendar_sync.sql", "utf8"));
   state.sql = (async (parts: TemplateStringsArray, ...args: unknown[]) =>
     (
@@ -61,8 +62,24 @@ afterAll(async () => db.close());
 beforeEach(async () => {
   state.oauth.mockReset();
   await db.exec(
-    "TRUNCATE calendar_events,calendar_sources,minutes; INSERT INTO calendar_sources(id,user_id,provider,name) VALUES ('g','alice','google','Google'),('o','alice','outlook','Outlook'),('b','bob','google','Private')",
+    "TRUNCATE calendar_events,calendar_sources,calendar_oauth_connections,minutes; INSERT INTO calendar_sources(id,user_id,provider,name) VALUES ('g','alice','google','Google'),('o','alice','outlook','Outlook'),('b','bob','google','Private')",
   );
+});
+test("calendar reads expose only the signed-in account identity, never OAuth credentials", async () => {
+  await db.exec(`INSERT INTO calendar_oauth_connections(user_id,provider,access_token_cipher,refresh_token_cipher,expires_at,account_email)
+    VALUES ('alice','google','access-secret','refresh-secret',now(),'alice@example.test'),
+      ('bob','google','other-secret','other-refresh',now(),'bob@example.test');`);
+  const result = await listCalendar();
+  expect(result.sources.find((source) => source.id === "g")).toMatchObject({
+    accountEmail: "alice@example.test",
+    connected: true,
+  });
+  expect(result.sources.find((source) => source.id === "o")).toMatchObject({
+    accountEmail: null,
+    connected: false,
+  });
+  expect(JSON.stringify(result)).not.toMatch(/bob@example|secret|refresh/);
+  expect(state.oauth).not.toHaveBeenCalled();
 });
 test("repeated sync retains event IDs, project links and minutes", async () => {
   await reconcileEvents(state.sql, "alice", "g", "google", [event]);

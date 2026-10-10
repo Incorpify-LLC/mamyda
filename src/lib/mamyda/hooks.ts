@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getWorkspace } from "./workspace";
 import { listCalendar } from "./calendar";
-import { listAlerts, runAlerts } from "./alerts";
+import { listAlerts } from "./alerts";
 import { listMinutes, listNotes, listVault } from "./writing";
 
 export function useWorkspace(options: { enabled?: boolean } = {}) {
@@ -46,20 +46,13 @@ export function useVaultList() {
   });
 }
 
-export function useAlerts() {
+export function useAlerts(options: { enabled?: boolean } = {}) {
   const ws = useWorkspace();
   const qc = useQueryClient();
   const query = useQuery({
     queryKey: ["alerts"],
-    enabled: ws.isSuccess,
-    queryFn: async () => {
-      try {
-        await runAlerts();
-      } catch {
-        /* still list */
-      }
-      return listAlerts();
-    },
+    enabled: ws.isSuccess && (options.enabled ?? true),
+    queryFn: () => listAlerts(),
   });
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["alerts"] });

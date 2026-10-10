@@ -88,6 +88,13 @@ test("scheduled checks create and deliver reminders while no signed-in page is i
     { status: "sent" },
   ]);
 });
+test("repeated alert reads never create or dispatch pending reminders", async () => {
+  expect(await listAlerts()).toEqual({ alerts: [], emails: [] });
+  await listAlerts();
+  expect(state.sendEmail).not.toHaveBeenCalled();
+  expect(state.sendTelegram).not.toHaveBeenCalled();
+  expect((await db.query("SELECT * FROM notification_deliveries")).rows).toEqual([]);
+});
 
 test("email and Telegram are independent and respect their per-channel preferences", async () => {
   await db.exec(

@@ -123,7 +123,11 @@ export const listCalendar = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const sql = await getSql();
     const sources = await sql<Record<string, unknown>>`
-      select * from calendar_sources where user_id = ${context.userId} order by created_at
+      select s.*, c.account_email,
+        (s.ics_url is not null or c.user_id is not null) as connected
+      from calendar_sources s left join calendar_oauth_connections c
+        on c.user_id=s.user_id and c.provider=s.provider
+      where s.user_id = ${context.userId} order by s.created_at
     `;
     const from = iso(addDays(startOfDay(new Date()), -14));
     const to = iso(addDays(startOfDay(new Date()), 90));

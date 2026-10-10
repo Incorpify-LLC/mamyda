@@ -17,6 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useVerifiedToken } from "@/components/submission-verification";
 import { createCalendarEvent, updateCalendarEvent } from "@/lib/mamyda/calendar";
 import type { CalendarEvent } from "@/lib/mamyda/types";
+import { CalendarSourceSummary } from "@/components/calendar-connections";
+import { APP_TZ } from "@/lib/time";
 
 export const Route = createFileRoute("/_app/calendar")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -33,6 +35,7 @@ function CalendarPage() {
   const [syncing, setSyncing] = useState(false);
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState("");
+  const [syncErrors, setSyncErrors] = useState<Record<string, string>>({});
   const [editor, setEditor] = useState<{
     eventId?: string;
     sourceId: string;
@@ -80,6 +83,7 @@ function CalendarPage() {
   const writableSources = (cal.data?.sources ?? []).filter(
     (source) =>
       source.enabled &&
+      source.connected !== false &&
       !source.icsUrl &&
       (source.provider === "google" || source.provider === "outlook"),
   );
@@ -178,7 +182,7 @@ function CalendarPage() {
     setSyncing(true);
     try {
       const sources = (cal.data?.sources ?? []).filter(
-        (s) => s.enabled && (!sourceId || s.id === sourceId),
+        (s) => s.enabled && s.connected !== false && (!sourceId || s.id === sourceId),
       );
       let successes = 0;
       let failures = 0;
@@ -186,12 +190,31 @@ function CalendarPage() {
       for (const source of sources) {
         setActiveSource(source.id);
         setSyncMessage(`Syncing ${source.name}…`);
-        const result = await syncCalendars({ data: { sourceId: source.id } });
-        for (const outcome of result.outcomes) {
-          if (outcome.ok) {
-            successes++;
-            count += outcome.eventCount ?? 0;
-          } else failures++;
+        try {
+          const result = await syncCalendars({ data: { sourceId: source.id } });
+          for (const outcome of result.outcomes) {
+            if (outcome.ok) {
+              successes++;
+              count += outcome.eventCount ?? 0;
+              setSyncErrors((current) => {
+                const next = { ...current };
+                delete next[source.id];
+                return next;
+              });
+            } else {
+              failures++;
+              setSyncErrors((current) => ({
+                ...current,
+                [source.id]: outcome.error ?? "Sync failed",
+              }));
+            }
+          }
+        } catch (error) {
+          failures++;
+          setSyncErrors((current) => ({
+            ...current,
+            [source.id]: error instanceof Error ? error.message : "Sync request failed",
+          }));
         }
         await cal.refetch();
       }
@@ -218,11 +241,13 @@ function CalendarPage() {
       title="Calendar"
       action={
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={newEvent}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={newEvent}
+            disabled={!writableSources.length || cal.isPending || ws.isPending}
+          >
             New event
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => void onSync()} disabled={syncing}>
-            {syncing ? "Syncing…" : "Sync"}
           </Button>
         </div>
       }
@@ -241,45 +266,53 @@ function CalendarPage() {
           <Card className="mb-4 space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-medium">Connected calendars</h2>
-              <Link to="/settings" className="text-sm underline">
+              <Link to="/settings" search={{ section: "calendars" }} className="text-sm underline">
                 Manage / reconnect
               </Link>
             </div>
             <p className="text-xs text-muted-foreground">
-              Imports Google primary and Outlook default calendars, and subscribed feeds: 14 days
-              back through 90 days ahead. Other calendars are not imported.
+              Times shown in {APP_TZ}. Imports Google primary and Outlook default calendars, and
+              subscribed feeds: 14 days back through 90 days ahead. Other calendars are not
+              imported.
             </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void onSync()}
+              disabled={
+                syncing ||
+                !cal.data.sources.some((source) => source.enabled && source.connected !== false)
+              }
+            >
+              {syncing ? "Syncing calendars…" : "Sync all calendars"}
+            </Button>
             {cal.data.sources.length === 0 && !syncMessage && (
               <p className="text-sm">No calendars connected. Add a calendar in Settings.</p>
             )}
             {cal.data.sources.map((source) => (
               <div
                 key={source.id}
-                className="flex flex-wrap items-center justify-between gap-2 border-t pt-3"
+                className="grid gap-2 border-t pt-3 sm:grid-cols-[minmax(0,1fr)_auto]"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{source.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {activeSource === source.id
-                      ? "Syncing…"
-                      : source.lastSyncedAt
-                        ? `Last successful sync: ${new Date(source.lastSyncedAt).toLocaleString()}${source.lastImportedCount == null ? "" : ` · ${source.lastImportedCount} events`}`
-                        : "Not synced yet"}
-                  </p>
-                  {source.lastError && (
-                    <p role="alert" className="mt-1 text-sm text-destructive">
-                      {source.lastError}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={syncing || !source.enabled}
-                  onClick={() => void onSync(source.id)}
-                >
-                  {source.lastError ? "Retry" : "Sync"}
-                </Button>
+                <CalendarSourceSummary
+                  source={{ ...source, lastError: syncErrors[source.id] ?? source.lastError }}
+                  syncing={activeSource === source.id}
+                />
+                <details>
+                  <summary className="cursor-pointer text-xs">
+                    Sync options for {source.name}
+                  </summary>
+                  <Button
+                    className="mt-2"
+                    size="sm"
+                    variant="outline"
+                    disabled={syncing || !source.enabled || source.connected === false}
+                    onClick={() => void onSync(source.id)}
+                    aria-label={`${source.lastError || syncErrors[source.id] ? "Retry sync" : "Sync"} ${source.name}`}
+                  >
+                    {source.lastError || syncErrors[source.id] ? "Retry" : "Sync"}
+                  </Button>
+                </details>
               </div>
             ))}
             <p role="status" aria-live="polite" className="text-sm">
@@ -345,19 +378,19 @@ function CalendarPage() {
                         <Card
                           key={ev.id}
                           id={`calendar-event-${ev.id}`}
-                          className="flex items-start gap-4 p-4"
+                          className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-3 p-4 sm:flex sm:gap-4"
                         >
-                          <div className="w-20 shrink-0 text-sm tabular-nums text-muted-foreground">
+                          <div className="shrink-0 text-sm tabular-nums text-muted-foreground sm:w-20">
                             {ev.allDay ? "All day" : formatTime(ev.startsAt)}
                             {ev.endsAt && !ev.allDay ? <div>{formatTime(ev.endsAt)}</div> : null}
                           </div>
-                          <div className="min-w-0 flex-1">
+                          <div className="min-w-0 flex-1 break-words">
                             <p className="font-medium">{ev.title}</p>
                             <p className="text-sm text-muted-foreground">
                               {[ev.location, projectName(ev.projectId)].filter(Boolean).join(" · ")}
                             </p>
                           </div>
-                          <div className="flex shrink-0 items-center gap-2">
+                          <div className="col-start-2 flex shrink-0 items-center gap-2">
                             <Badge tone={ev.isSample ? "muted" : "primary"}>
                               {ev.sourceProvider}
                             </Badge>
@@ -397,7 +430,8 @@ function CalendarPage() {
               {editor.eventId ? "Edit calendar event" : "New calendar event"}
             </DialogTitle>
             <DialogDescription>
-              Changes are saved directly to the selected calendar.
+              Changes are saved directly to the selected calendar. Event editor times use your
+              device timezone; the agenda displays {APP_TZ}.
             </DialogDescription>
             <div className="mt-4 space-y-3">
               <div className="space-y-1.5">

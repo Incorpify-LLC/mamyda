@@ -111,6 +111,8 @@ export function mapSource(row: Record<string, unknown>): CalendarSource {
     lastSyncedAt: iso(row.last_synced_at),
     lastImportedCount: row.last_imported_count == null ? null : Number(row.last_imported_count),
     lastError: str(row.last_error),
+    accountEmail: str(row.account_email),
+    connected: row.connected == null ? undefined : bool(row.connected),
   };
 }
 
