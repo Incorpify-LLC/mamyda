@@ -50,6 +50,11 @@ try {
   assert.equal(await confirm.isDisabled(), true);
   await page.getByLabel(/I agree to send this question/).check();
   await page.evaluate(() => window.__expireSecurity());
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("button")].some(
+      (button) => button.textContent === "Ask Model now" && button.disabled,
+    ),
+  );
   assert.equal(await confirm.isDisabled(), true);
   await page.getByRole("button", { name: "Verify security fixture" }).click();
   await confirm.click();

@@ -28,6 +28,11 @@ jobs:
       DATABASE_URL: postgresql://mamyda:ci-only-password@127.0.0.1:5432/mamyda_test
       BETTER_AUTH_SECRET: ci-only-secret-not-for-any-deployed-environment
       VITE_AUTH_ENABLED: 'true'
+      # Disposable loopback test servers only; deployment validation rejects this.
+      OTP_SINK: '1'
+      # Public Cloudflare dummy sitekey; the loopback E2E harness supplies the
+      # widget fixture. Strict server verification is covered by unit tests.
+      TURNSTILE_SITE_KEY: '1x00000000000000000000AA'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -1,5 +1,5 @@
 {
-  "release": "integration-clarity-20261010-21",
+  "release": "security-maintenance-20261015-22",
   "mode": "production",
-  "description": "Calendar account identity and sync recovery, quieter connection tools and delivery logs, accessible Settings tabs and passive alert reads."
+  "description": "Patched storage SDK and transitive dependencies, portable platform tests and restored complete CI verification."
 }
