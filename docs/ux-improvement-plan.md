@@ -16,7 +16,7 @@ Increment #20 is deployed and complete; see [quieter editors and honest Vault co
 
 Increment #21 is deployed and complete; see [integration clarity and passive Settings](integration-clarity.md). Calendar account identity/status/last sync and secondary retry tools are clear; Settings connection tools/logs are collapsed. Alert reads never evaluate or dispatch deliveries. Signed-in desktop/mobile read-only checks passed without provider writes or test notifications.
 
-All five increments in this UI/UX rollout are complete. Dependency remediation (#22), inherited platform-test assets (#23) and the earlier Board Vault backlog are separate work; completing this rollout does not mark those issues resolved.
+All five increments in this UI/UX rollout are complete. Dependency remediation (#22) and inherited platform-test assets (#23) were subsequently resolved in the [security maintenance release](security-maintenance.md), with full CI passing. The earlier Board Vault backlog remains separate work; completing this rollout does not mark those issues resolved.
 
 ## First increment: deployed
 
