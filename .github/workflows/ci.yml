@@ -43,6 +43,8 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
+      - name: Install media processing test dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg poppler-utils unzip
       - run: npm test
       - name: Apply migrations and check rerun safety
         run: |
