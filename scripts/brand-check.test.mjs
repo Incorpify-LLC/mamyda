@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -144,10 +151,7 @@ test("__root.tsx og:type no longer satisfies the canvas gate", () => {
     narrowFile: "x-banner.jpg",
   });
   mkdirSync(join(root, "src/routes"), { recursive: true });
-  writeFileSync(
-    join(root, "src/routes/__root.tsx"),
-    '{ property: "og:type", content: "x:game" }',
-  );
+  writeFileSync(join(root, "src/routes/__root.tsx"), '{ property: "og:type", content: "x:game" }');
   const warnings = computeBrandWarnings({ hasCanvas: true, workspaceRoot: root });
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /x:game/);
@@ -301,73 +305,45 @@ test("cli: a non-game with a compliant card passes", () => {
   assert.deepEqual(JSON.parse(run.stdout).messages, []);
 });
 
-// --- the prompts are the only enforcement here, so pin them to the code ---
+// Upstream template prompt policies are not shipped with Mamyda. Test the
+// executable consumer contract using versioned data, not private skill files.
+const contract = JSON.parse(
+  readFileSync(new URL("./fixtures/asset-cli.json", import.meta.url), "utf8"),
+);
 
-const readDoc = (rel) => readFileSync(join(TEMPLATE_ROOT, rel), "utf8");
+test("portable pending-marker contract expires exactly at the documented bound", () => {
+  assert.equal(OG_PENDING_REL_PATH, contract.pending.path);
+  assert.equal(OG_PENDING_MAX_AGE_MS, contract.pending.maxAgeMs);
+  const root = makeWorkspace({ pendingAgeMs: 0 });
+  const now = Date.now();
+  utimesSync(join(root, contract.pending.path), new Date(now), new Date(now));
+  assert.equal(ogPendingActive(root, now + contract.pending.maxAgeMs - 1), true);
+  assert.equal(ogPendingActive(root, now + contract.pending.maxAgeMs), false);
+});
 
-test("SKILL.md and AGENTS.md name the marker path and bound this script uses", () => {
-  // Prose wraps, so the minute count may straddle a line break.
-  const bound = new RegExp(`${OG_PENDING_MAX_AGE_MS / 60_000}\\s+minutes`);
-  for (const rel of [".grok/skills/og/SKILL.md", "AGENTS.md"]) {
-    const doc = readDoc(rel);
-    assert.ok(doc.includes(`/workspace/${OG_PENDING_REL_PATH}`), `${rel}: marker path`);
-    assert.ok(bound.test(doc), `${rel}: staleness bound`);
+test("portable brand invocations retain the game and placeholder distinction", () => {
+  assert.equal(contract.brandChecks.length, 4);
+  for (const example of contract.brandChecks) {
+    assert.deepEqual(parseBrandCheckArgs(example.args), {
+      game: example.game,
+      placeholderOk: example.placeholderOk,
+      root: null,
+    });
+    assert.match(parseBrandCheckArgs([...example.args, "--canvas"]).error, /unexpected argument/);
   }
 });
 
-// The two places that own "never wait on the brand task". Scanning the whole
-// of AGENTS.md instead would make every unrelated `wait_tasks` mention a future
-// feature adds to it this test's business.
-const PROHIBITION_SECTIONS = [
-  {
-    rel: ".grok/skills/og/SKILL.md",
-    label: '§ "Brand-asset pass"',
-    from: "## Brand-asset pass:",
-    until: /\n## /,
-  },
-  {
-    rel: "AGENTS.md",
-    label: "execution loop step 6",
-    from: "6. **Brand-asset pass",
-    until: /\n7\. /,
-  },
-];
-
-function prohibitionSection({ rel, label, from, until }) {
-  const doc = readDoc(rel);
-  const start = doc.indexOf(from);
-  assert.notEqual(start, -1, `${rel}: ${label} moved — no "${from.trim()}"`);
-  const rest = doc.slice(start + from.length);
-  const end = rest.search(until);
-  // Markdown emphasis and prose wrapping both sit between the two words.
-  return (from + (end === -1 ? rest : rest.slice(0, end))).replace(/[`*]/g, "").replace(/\s+/g, " ");
-}
-
-test("the sections that own the brand-task prohibition never affirm a wait", () => {
-  // Pinned on the shape of the prohibition, not on a negation being somewhere
-  // nearby: "So: wait_tasks before the final verify, but never get_task_output"
-  // keeps a negation in the sentence while instructing exactly the wait.
-  const connectors = /(?:\s|[/,;]|\band\b|\bor\b|\bwait_tasks\b|\bget_task_output\b)+$/i;
-  const negation = /\b(?:no|never|not|don['’]t)$/i;
-  for (const section of PROHIBITION_SECTIONS) {
-    const where = `${section.rel} ${section.label}`;
-    const prose = prohibitionSection(section);
-    const mentions = [...prose.matchAll(/wait_tasks|get_task_output/g)];
-    assert.ok(mentions.length >= 2, `${where}: the prohibition itself went missing`);
-    for (const match of mentions) {
-      const before = prose.slice(0, match.index).replace(connectors, "");
-      const context = prose.slice(Math.max(0, match.index - 60), match.index + 20);
-      assert.ok(negation.test(before), `${where}: not a prohibition: …${context}…`);
-    }
-  }
-});
-
-test("SKILL.md tells the pass to self-check with the flag this CLI accepts", () => {
-  const skill = readDoc(".grok/skills/og/SKILL.md");
-  const invocations = skill.match(/node scripts\/brand-check\.mjs[^\n`]*/g) ?? [];
-  assert.ok(invocations.length > 0);
-  for (const line of invocations) {
-    const argv = line.replace("node scripts/brand-check.mjs", "").trim().split(/\s+/);
-    assert.equal(parseBrandCheckArgs(argv.filter(Boolean)).error, undefined, line);
+test("brand CLI examples run without installed skills or contributor instructions", () => {
+  const root = makeWorkspace({
+    siteJson: GAME_SITE,
+    cardFile: "og.jpg",
+    narrowFile: "x-banner.jpg",
+  });
+  assert.equal(existsSync(join(root, ".grok/skills")), false);
+  assert.equal(existsSync(join(root, "AGENTS.md")), false);
+  for (const example of contract.brandChecks) {
+    const run = runCheck(root, example.args);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+    assert.equal(JSON.parse(run.stdout).ok, true);
   }
 });

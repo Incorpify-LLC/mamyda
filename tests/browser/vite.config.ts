@@ -4,6 +4,8 @@ import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 const stub = fileURLToPath(new URL("./chat-stubs.tsx", import.meta.url));
 export default defineConfig({
+  // Concurrent app and fixture servers must not rewrite each other's optimizer cache.
+  cacheDir: "node_modules/.vite-browser-fixtures",
   plugins: [tailwindcss(), react()],
   resolve: {
     alias: [

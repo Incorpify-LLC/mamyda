@@ -2,7 +2,8 @@
 import { useIntegrationWorkspace } from "./integration-stubs";
 export { useCalendar, useAlerts } from "./integration-stubs";
 export function useWorkspace() {
-  if (document.title === "Isolated integration UI") return useIntegrationWorkspace();
+  const integrationWorkspace = useIntegrationWorkspace();
+  if (document.title === "Isolated integration UI") return integrationWorkspace;
   return {
     data: {
       clients: [

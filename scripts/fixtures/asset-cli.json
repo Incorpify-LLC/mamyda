@@ -1,0 +1,14 @@
+{
+  "pending": { "path": ".grok/og-pending", "maxAgeMs": 600000 },
+  "brandChecks": [
+    { "args": [], "game": false, "placeholderOk": false },
+    { "args": ["--game"], "game": true, "placeholderOk": false },
+    { "args": ["--placeholder-ok"], "game": false, "placeholderOk": true },
+    { "args": ["--game", "--placeholder-ok"], "game": true, "placeholderOk": true }
+  ],
+  "handovers": [
+    { "staged": ".staging/og.jpg.tmp", "target": "public/og.jpg" },
+    { "staged": ".staging/x-banner.jpg.tmp", "target": "public/x-banner.jpg" },
+    { "staged": ".staging/site.json.tmp", "target": "src/lib/og/site.json" }
+  ]
+}
