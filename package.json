@@ -23,6 +23,7 @@
     "test:platform": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts",
     "test:app": "vitest run",
     "test:e2e": "node scripts/e2e.mjs",
+    "test:ui": "node scripts/writing-ui-e2e.mjs && node scripts/context-ui-e2e.mjs && node scripts/board-ui-e2e.mjs && node scripts/chat-ui-e2e.mjs && node scripts/editor-ui-e2e.mjs && node scripts/integration-ui-e2e.mjs && node scripts/verification-ui-e2e.mjs",
     "check:deploy": "node scripts/check-deploy-env.mjs"
   },
   "dependencies": {
@@ -70,8 +71,10 @@
     "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.54.0",
+    "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.6.5",
     "recharts": "^2.13.0",
+    "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.3.0",

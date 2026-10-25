@@ -11,6 +11,11 @@ alone is not evidence of test-first development.
 
 ## Current tests
 
+- `npm run test:ui`: isolated Playwright suites for Markdown, local draft recovery,
+  encrypted drafts, persistent project navigation, board/chat/recording/integration
+  UX and on-demand verification. Start the fixture server first as described in
+  [Writing experience](writing-experience.md). CI runs these automatically.
+
 - `npm run test:platform`: Node test-runner coverage of platform utilities and auth
   identity verification. Template-specific fixtures no longer assume Mamyda is
   auth-disabled or unbranded.

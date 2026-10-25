@@ -119,6 +119,24 @@ test("encrypted note stores explicit searchable metadata but no plaintext body",
 test("notes cannot link another account project", async () => {
   await expect(saveNote({ data: { body: "Note", projectId: "pb" } })).rejects.toThrow();
 });
+test("empty notes and minutes are rejected without creating rows", async () => {
+  await expect(saveNote({ data: { body: " \n", title: " " } })).rejects.toThrow("Write a note");
+  await expect(saveMinute({ data: { title: " ", body: "\n", attendees: " " } })).rejects.toThrow(
+    "Write minutes",
+  );
+  expect((await db.query("select id from notes where user_id='alice'")).rows).toHaveLength(0);
+  expect((await db.query("select id from minutes where user_id='alice'")).rows).toHaveLength(0);
+});
+test("untitled nonempty notes and minutes remain saveable", async () => {
+  const note = await saveNote({ data: { body: "Opening sentence. More detail." } });
+  expect(note.notes.find((item) => item.id === note.id)?.body).toBe(
+    "Opening sentence. More detail.",
+  );
+  const minute = await saveMinute({ data: { title: "", body: "A meeting decision" } });
+  expect((await db.query("select body from minutes where id=$1", [minute])).rows[0]?.body).toBe(
+    "A meeting decision",
+  );
+});
 test("note project picker supports an explicit link and an explicit unlinked note", async () => {
   const linked = await saveNote({ data: { body: "Project work", projectId: "p2" } });
   expect(

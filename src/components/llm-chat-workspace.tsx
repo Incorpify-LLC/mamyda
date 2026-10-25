@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { MarkdownView } from "@/components/markdown-view";
+import { finishEditorDraft } from "@/lib/editor-drafts";
 import {
   Dialog,
   DialogContent,
@@ -254,6 +256,7 @@ export function LLMChatWorkspace(props: Props) {
         ];
         parseChatBlob(JSON.stringify({ version: 1, messages: next }));
         setMessages(next);
+        finishEditorDraft("chat-question");
         setQuestion("");
         setDirty(true);
       } else {
@@ -364,7 +367,7 @@ export function LLMChatWorkspace(props: Props) {
               {message.role === "user" ? "You" : "Assistant"}
               {message.role === "assistant" && message.model ? ` · ${message.model}` : ""}
             </p>
-            <p className="whitespace-pre-wrap break-words text-sm leading-7">{message.content}</p>
+            <MarkdownView>{message.content}</MarkdownView>
             {Boolean(message.context?.length) && (
               <p className="mt-2 text-xs text-muted-foreground">
                 Context: {message.context?.join("; ")}
@@ -414,6 +417,8 @@ export function LLMChatWorkspace(props: Props) {
               Question
             </Label>
             <Textarea
+              draftId="chat-question"
+              onRestoreDraft={setQuestion}
               id="chat-question"
               value={question}
               disabled={busy}

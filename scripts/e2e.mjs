@@ -77,12 +77,30 @@ try {
   await page.goto(base + "/notes");
   await page.getByRole("button", { name: "New note", exact: true }).click();
   await page.getByPlaceholder("Write. Use #tags.").fill("QA private note #qa-project");
+  await page.getByRole("status").filter({ hasText: "Draft saved on this device" }).waitFor();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.reload();
+  await page.getByRole("button", { name: "Restore draft", exact: true }).click();
+  assert.equal(
+    await page.getByPlaceholder("Write. Use #tags.").inputValue(),
+    "QA private note #qa-project",
+  );
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByText("Note saved", { exact: true }).waitFor();
   await page.reload();
   await page.getByRole("button", { name: /QA private note/ }).waitFor();
   await page.goto(base + "/minutes");
   await page.getByLabel("Title", { exact: true }).fill("QA Minutes");
+  await page.getByLabel("Notes", { exact: true }).fill("## Decisions\n\n- Keep drafts recoverable");
+  await page.getByRole("status").filter({ hasText: "Draft saved on this device" }).waitFor();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.reload();
+  await page.getByRole("button", { name: "Restore draft", exact: true }).click();
+  assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "QA Minutes");
+  assert.equal(
+    await page.getByLabel("Notes", { exact: true }).inputValue(),
+    "## Decisions\n\n- Keep drafts recoverable",
+  );
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByText("Minutes saved", { exact: true }).waitFor();
   await page.reload();
@@ -133,6 +151,15 @@ try {
   );
 } catch (error) {
   await page.screenshot({ path: "screenshots/e2e-failure.png", fullPage: true }).catch(() => {});
+  console.error(
+    "Isolated E2E failure:",
+    page.url(),
+    await page
+      .locator("body")
+      .innerText()
+      .catch(() => "Page unavailable"),
+    errors,
+  );
   throw error;
 } finally {
   await browser.close();

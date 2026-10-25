@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { finishEditorDraft } from "@/lib/editor-drafts";
 import { useVerifiedToken } from "@/components/submission-verification";
 import { createCalendarEvent, updateCalendarEvent } from "@/lib/mamyda/calendar";
 import type { CalendarEvent } from "@/lib/mamyda/types";
@@ -164,6 +165,7 @@ function CalendarPage() {
         await createCalendarEvent({ data, headers: { "x-turnstile-response": captchaToken } });
       }
       await cal.refetch();
+      finishEditorDraft(`event:${editor.eventId || "new"}`);
       setEditor(null);
       toast.success(editor.eventId ? "Calendar event updated" : "Event added to your calendar");
     } catch (error) {
@@ -545,6 +547,9 @@ function CalendarPage() {
               <div className="space-y-1.5">
                 <Label htmlFor="calendar-event-description">Description</Label>
                 <Textarea
+                  draftId={`event:${editor.eventId || "new"}`}
+                  draftName={editor.title}
+                  onRestoreDraft={(description) => setEditor({ ...editor, description })}
                   id="calendar-event-description"
                   maxLength={8000}
                   value={editor.description}

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { finishEditorDraft } from "@/lib/editor-drafts";
 import { useCurrentUser } from "@/lib/auth/use-current-user";
 import { useVaultList, useWorkspace } from "@/lib/mamyda/hooks";
 import {
@@ -245,6 +246,7 @@ function VaultPage() {
         },
       });
       setTitle("");
+      finishEditorDraft(`vault:${editingId || "new"}`);
       setBody("");
       setEditingId(null);
       await list.refetch();
@@ -496,6 +498,10 @@ function VaultPage() {
                   onChange={(e) => setTitle(e.target.value)}
                 />
                 <Textarea
+                  draftId={`vault:${editingId || "new"}`}
+                  draftName={title}
+                  sensitive
+                  onRestoreDraft={(text) => setBody(text)}
                   className="min-h-56"
                   placeholder="This never leaves the browser in plaintext."
                   value={body}

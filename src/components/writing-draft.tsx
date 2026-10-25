@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useBlocker } from "@tanstack/react-router";
 import { useCurrentUser } from "@/lib/auth/use-current-user";
 import { writingDraftKey } from "@/lib/writing-draft-storage";
+import { draftTitle } from "@/lib/editor-drafts";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
-/** Limited to writing editors: never persist vault plaintext. Drafts live only in this tab. */
+/** Full-record recovery for unencrypted writing editors; encrypted text uses sealed editor drafts. */
 export function useWritingDraft<T>({
   kind,
   value,
@@ -25,7 +26,7 @@ export function useWritingDraft<T>({
 }) {
   const user = useCurrentUser();
   const key = user ? writingDraftKey(user.id, kind) : null;
-  const [recovery, setRecovery] = useState<{ value: T; baseline: T } | null>(null);
+  const [recovery, setRecovery] = useState<{ value: T; baseline: T; title?: string } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [storageError, setStorageError] = useState(false);
@@ -33,6 +34,10 @@ export function useWritingDraft<T>({
   const busy = useRef(false);
   const [pending, setPending] = useState<(() => void) | null>(null);
   const dirty = JSON.stringify(value) !== JSON.stringify(baseline);
+  const fields = value as Record<string, unknown>;
+  const nonempty = [fields.body, fields.title, fields.attendees].some(
+    (text) => typeof text === "string" && text.trim(),
+  );
   const blocker = useBlocker({
     shouldBlockFn: () => dirty || busy.current || locked,
     withResolver: true,
@@ -42,6 +47,7 @@ export function useWritingDraft<T>({
     if (key) {
       try {
         sessionStorage.removeItem(key);
+        localStorage.removeItem(key);
       } catch {}
     }
   };
@@ -54,7 +60,7 @@ export function useWritingDraft<T>({
       return;
     }
     try {
-      const raw = sessionStorage.getItem(key);
+      const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw);
         // Upgrade existing note drafts without discarding their unsaved bodies.
@@ -80,11 +86,23 @@ export function useWritingDraft<T>({
         };
         if (
           parsed.version === 1 &&
+          (!parsed.updatedAt ||
+            (typeof parsed.updatedAt === "number" &&
+              parsed.updatedAt > Date.now() - 30 * 86400000)) &&
+          [parsed.value?.body, parsed.value?.title, parsed.value?.attendees].some(
+            (text) => typeof text === "string" && text.trim(),
+          ) &&
           matches(parsed.value, value) &&
           matches(parsed.baseline, baseline)
         )
-          setRecovery(parsed);
-        else sessionStorage.removeItem(key);
+          setRecovery({
+            ...parsed,
+            title: typeof parsed.title === "string" ? parsed.title.slice(0, 80) : undefined,
+          });
+        else {
+          sessionStorage.removeItem(key);
+          localStorage.removeItem(key);
+        }
       }
     } catch {
       setStorageError(true);
@@ -99,12 +117,26 @@ export function useWritingDraft<T>({
       return;
     }
     try {
-      if (dirty) sessionStorage.setItem(key, JSON.stringify({ version: 1, value, baseline }));
-      else sessionStorage.removeItem(key);
+      if (dirty && nonempty)
+        localStorage.setItem(
+          key,
+          JSON.stringify({
+            version: 1,
+            value,
+            baseline,
+            title: draftTitle(
+              String(fields.body || fields.attendees || ""),
+              typeof fields.title === "string" ? fields.title : undefined,
+            ),
+            updatedAt: Date.now(),
+          }),
+        );
+      else localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
     } catch {
       setStorageError(true);
     }
-  }, [key, loaded, recovery, dirty, value, baseline, ephemeral]);
+  }, [key, loaded, recovery, dirty, value, baseline, ephemeral, nonempty]);
   async function save() {
     if (busy.current || locked) return false;
     busy.current = true;
@@ -154,7 +186,9 @@ export function useWritingDraft<T>({
       {recovery && (
         <div role="status" className="mb-4 rounded-lg border bg-card p-4">
           <p className="mb-2 text-sm">
-            An unsaved {kind === "notes" ? "note" : "minutes"} draft was recovered from this tab.
+            An unsaved {kind === "notes" ? "note" : "minutes"} draft is available on this device.
+            Drafts are removed on sign out.
+            {recovery.title && <span className="mt-1 block font-medium">{recovery.title}</span>}
           </p>
           <div className="flex gap-2">
             <Button
@@ -182,6 +216,12 @@ export function useWritingDraft<T>({
       {storageError && (
         <p role="alert" className="mb-3 text-sm text-destructive">
           Draft recovery storage is unavailable. Save before closing this tab.
+        </p>
+      )}
+      {!ephemeral && loaded && dirty && nonempty && !recovery && !storageError && (
+        <p role="status" className="mb-3 text-xs text-muted-foreground">
+          Draft saved on this device. Use Save to publish. Drafts expire after 30 days and are
+          removed on sign out.
         </p>
       )}
       {error && (

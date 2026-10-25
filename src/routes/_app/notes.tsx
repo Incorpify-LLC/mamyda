@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { useProjectContext } from "@/components/project-context";
 import { EditorFeedback } from "@/components/editor-feedback";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { finishEditorDraft } from "@/lib/editor-drafts";
 import { deleteNote, saveNote } from "@/lib/mamyda/writing";
 import { useNotes, useWorkspace } from "@/lib/mamyda/hooks";
 import { extractTags, titleFromBody } from "@/lib/tags";
@@ -45,7 +46,7 @@ function NotesPage() {
   const [titleDraft, setTitleDraft] = useState("");
   const scope = `${context.client?.id ?? ""}/${context.project?.id ?? ""}/${context.invalid}`;
   const previousScope = useRef(scope);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (previousScope.current !== scope && !search.noteId) {
       setCurrent(null);
       setDraft("");
@@ -95,6 +96,7 @@ function NotesPage() {
   }, [search.noteId, list.data, current?.id]);
 
   async function persist() {
+    if (!draft.trim() && !titleDraft.trim()) throw new Error("Write a note before saving.");
     if (current?.encrypted && !unlocked) throw new Error("Unlock content before saving");
     const encryption = encryptContent
       ? await encryptPrivateContent(draft, ws.data?.profile.vaultPublicKey)
@@ -118,6 +120,7 @@ function NotesPage() {
     const saved = next.notes.find((n) => n.id === next.id);
     if (!saved)
       throw new Error("Could not identify the saved note. Reload your notes before retrying.");
+    finishEditorDraft(`note:${current?.id || "new"}`);
     setCurrent(saved);
     setDraft(saved.body);
     setUnlocked(false);
@@ -303,6 +306,17 @@ function NotesPage() {
               }}
             />
             <Textarea
+              draftId={`note:${current.id || "new"}`}
+              encryptedDraftOnly
+              draftName={titleDraft}
+              sensitive={encryptContent || Boolean(current.encrypted)}
+              onRestoreDraft={(body, encrypted) => {
+                setDraft(body);
+                if (encrypted) {
+                  setEncryptContent(true);
+                  setUnlocked(true);
+                }
+              }}
               aria-label="Note body"
               disabled={
                 protection.saving ||

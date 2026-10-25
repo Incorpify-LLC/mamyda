@@ -9,7 +9,7 @@ export function clearWritingDrafts() {
       const storage = window[name];
       for (let i = storage.length - 1; i >= 0; i--) {
         const key = storage.key(i);
-        if (key?.startsWith(prefix)) storage.removeItem(key);
+        if (key?.startsWith(prefix) || key?.startsWith("mamyda.editor-draft.")) storage.removeItem(key);
       }
     } catch {
       /* Storage may be unavailable in private browsing. */

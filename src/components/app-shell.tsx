@@ -53,7 +53,7 @@ function NavLinks({ onNavigate, compact }: { onNavigate?: () => void; compact?: 
         return (
           <Link
             key={item.to}
-            to={item.to}
+            to={item.to === "/board" ? memory.path : item.to}
             search={
               item.to === "/board"
                 ? isBoardPath(pathname)
@@ -138,8 +138,7 @@ export function AppShell({
     <div className="min-h-dvh bg-background">
       <aside className="fixed inset-y-0 left-0 hidden w-56 flex-col border-r border-border bg-card/80 px-3 py-5 md:flex">
         <div className="px-3 pb-6">
-          <p className="font-display text-2xl tracking-tight">Mamyda</p>
-          <p className="mt-1 text-xs text-muted-foreground">Your day, stitched.</p>
+          <p className="font-display text-xl font-semibold tracking-tight">Mamyda</p>
         </div>
         <NavLinks />
         <div className="mt-auto border-t border-border px-1 pt-4">
@@ -175,11 +174,11 @@ export function AppShell({
             </Button>
           </div>
         </header>
-        <div className="px-4 py-5 pb-24 md:px-8 md:pb-10">
+        <div className="mx-auto max-w-[1600px] px-4 py-5 pb-24 md:px-8 md:pb-10">
           {isBoardPath(pathname) && (
             <nav
               aria-label="Board sections"
-              className="mb-3 flex gap-1 overflow-x-auto rounded-lg border border-border bg-card p-1"
+              className="mb-4 flex gap-1 overflow-x-auto border-b border-border"
             >
               {BOARD_SECTIONS.map((section, index) => {
                 const Icon = [Columns3, FileText, NotebookPen, FileText, Lock][index];
@@ -191,10 +190,10 @@ export function AppShell({
                     search={context}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex shrink-0 flex-1 items-center justify-center gap-2 rounded-md px-2 py-2 text-sm font-medium sm:px-3",
+                      "flex shrink-0 flex-1 items-center justify-center gap-2 border-b-2 px-2 py-3 text-sm font-medium sm:px-3",
                       active
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted",
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
                     <Icon className="hidden size-4 sm:block" aria-hidden="true" />

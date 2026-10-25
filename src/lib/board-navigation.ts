@@ -15,10 +15,10 @@ export function boardSearchContext(search: Record<string, unknown>): {
   projectId?: string;
 } {
   return {
-    ...(typeof search.clientId === "string" && search.clientId
+    ...(typeof search.clientId === "string"
       ? { clientId: search.clientId }
       : {}),
-    ...(typeof search.projectId === "string" && search.projectId
+    ...(typeof search.projectId === "string"
       ? { projectId: search.projectId }
       : {}),
   };

@@ -11,6 +11,7 @@ test("sign-out clears all writing drafts without touching theme or vault metadat
     const values = new Map([
       [writingDraftKey("alice", "notes"), "private draft"],
       [writingDraftKey("bob", "minutes"), "another"],
+      ["mamyda.editor-draft.alice.task", "encrypted draft"],
       ["mamyda-theme", "dark"],
       ["vault-metadata", "encrypted"],
     ]);

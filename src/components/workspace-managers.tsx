@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { finishEditorDraft } from "@/lib/editor-drafts";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useVerifiedToken } from "@/components/submission-verification";
@@ -220,6 +221,7 @@ export function ProjectDialog({
                 headers: captcha ? { "x-turnstile-response": captcha } : undefined,
               });
               toast.success("Project saved");
+              finishEditorDraft(`project:${project?.id || client?.id || "new"}`);
               onOpenChange(false);
               onSaved();
             } catch (error) {
@@ -247,6 +249,9 @@ export function ProjectDialog({
             <div className="space-y-1.5">
               <Label htmlFor="pdesc">Description</Label>
               <Textarea
+                draftId={`project:${project?.id || client?.id || "new"}`}
+                draftName={name}
+                onRestoreDraft={setDescription}
                 id="pdesc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}

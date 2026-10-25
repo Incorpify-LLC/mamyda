@@ -40,6 +40,8 @@ export const saveMinute = createServerFn({ method: "POST" })
   .validator((input: unknown) => minuteInput.parse(input))
   .handler(async ({ context, data }) => {
     await requireTurnstile("minute-save");
+    if (!data.title.trim() && !data.body.trim() && !data.attendees?.trim())
+      throw new Error("Write minutes before saving.");
     const sql = await getSql();
     if (data.projectId) {
       const owned =
@@ -117,6 +119,8 @@ export const saveNote = createServerFn({ method: "POST" })
     assertContentWrite(data.body, Boolean(data.encryption), Boolean(existing?.content_object_key));
     if (existing?.content_object_key && !data.encryption)
       throw new Error("Unlock this note before editing and save it encrypted");
+    if (!data.encryption && !data.body.trim() && !data.title?.trim())
+      throw new Error("Write a note before saving.");
     const objectKey = data.encryption
       ? await (
           await import("./private-content.server")

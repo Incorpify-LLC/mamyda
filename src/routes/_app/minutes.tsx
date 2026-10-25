@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { useProjectContext } from "@/components/project-context";
 import { EditorFeedback } from "@/components/editor-feedback";
@@ -61,7 +61,7 @@ function MinutesPage() {
   }));
   const scope = `${context.client?.id ?? ""}/${context.project?.id ?? ""}/${context.invalid}`;
   const previousScope = useRef(scope);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (previousScope.current !== scope && !search.minuteId) {
       const blank = { ...emptyMinute(), projectId: context.project?.id ?? null };
       setCurrent(blank);
@@ -91,6 +91,8 @@ function MinutesPage() {
   );
 
   async function persist() {
+    if (!current.body.trim() && !current.title.trim() && !current.attendees.trim())
+      throw new Error("Write minutes before saving.");
     if (context.invalid) throw new Error("Choose an active project before saving minutes.");
     const captcha = await verify("minute-save", "Saving minutes");
     const id = await saveMinute({
@@ -182,7 +184,9 @@ function MinutesPage() {
 
         <Card className="p-5">
           <MinuteRecordings
-            disabled={protection.saving || polishing || protection.recoveryPending}
+            disabled={
+              context.loading || protection.saving || polishing || protection.recoveryPending
+            }
             canAccept={Boolean(current.id) && !protection.dirty}
             onBusyChange={setPolishing}
             onTranscript={(text) => {
@@ -206,7 +210,9 @@ function MinutesPage() {
           />
           <fieldset
             className="mt-4"
-            disabled={protection.saving || polishing || protection.recoveryPending}
+            disabled={
+              context.loading || protection.saving || polishing || protection.recoveryPending
+            }
           >
             <div className="space-y-3">
               <div className="space-y-1.5">

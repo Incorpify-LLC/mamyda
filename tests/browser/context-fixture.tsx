@@ -41,7 +41,9 @@ function Page() {
 }
 const root = createRootRoute({
   component: () => (
-    <BoardContextMemory>
+    <BoardContextMemory
+      userId={new URLSearchParams(window.location.search).get("account") || "isolated-context-user"}
+    >
       <Outlet />
     </BoardContextMemory>
   ),

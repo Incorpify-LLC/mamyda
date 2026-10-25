@@ -22,5 +22,6 @@ test("section switches preserve client/project context without stale record sele
       taskId: "task",
     }),
   ).toEqual({ clientId: "client", projectId: "project" });
-  expect(boardSearchContext({ clientId: 123, projectId: "" })).toEqual({});
+  // Explicit "All projects" must not be replaced by a remembered selection.
+  expect(boardSearchContext({ clientId: 123, projectId: "" })).toEqual({ projectId: "" });
 });

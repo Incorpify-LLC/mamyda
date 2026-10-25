@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { finishEditorDraft } from "@/lib/editor-drafts";
 import { useVerifiedToken } from "@/components/submission-verification";
 import { PRIORITIES, TASK_COLUMNS } from "@/lib/columns";
 import { deleteTask, moveTask, upsertTask } from "@/lib/mamyda/workspace";
@@ -366,6 +367,7 @@ function TaskDialog({
                 headers: captcha ? { "x-turnstile-response": captcha } : undefined,
               });
               toast.success("Task saved");
+              finishEditorDraft(`task:${task?.id || "new"}`);
               onClose();
               onSaved();
             } catch (error) {
@@ -424,6 +426,16 @@ function TaskDialog({
                 }}
               />
               <Textarea
+                draftId={`task:${task?.id || "new"}`}
+                draftName={title}
+                sensitive={encryptContent || Boolean(task?.encrypted)}
+                onRestoreDraft={(body, encrypted) => {
+                  setNotes(body);
+                  if (encrypted) {
+                    setEncryptContent(true);
+                    setUnlocked(true);
+                  }
+                }}
                 id="tnotes"
                 value={notes}
                 disabled={llmBusy || (Boolean(task?.encrypted) && !unlocked)}

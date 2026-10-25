@@ -12,6 +12,8 @@ try {
   await context.filter({ hasText: "/board · a / p" }).waitFor();
   await page.getByRole("combobox", { name: "Select client", exact: true }).selectOption("b");
   await context.filter({ hasText: "/board · b / q" }).waitFor();
+  await page.reload();
+  await context.filter({ hasText: "/board · b / q" }).waitFor();
   await page
     .getByRole("navigation", { name: "Primary navigation" })
     .getByRole("link", { name: "Calendar", exact: true })
@@ -83,13 +85,28 @@ try {
     assert.equal(await page.getByRole("alert").count(), 0);
   }
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(base);
+  await page.goto(base + "?entry=" + encodeURIComponent("/board?clientId=a&projectId=p"));
   await context.filter({ hasText: "/board · a / p" }).waitFor();
   const selector = page.getByRole("combobox", { name: "Select client", exact: true });
   await selector.focus();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await context.filter({ hasText: "/board · b / q" }).waitFor();
+  await page
+    .getByRole("navigation", { name: "Board sections" })
+    .getByRole("link", { name: "Notes", exact: true })
+    .click();
+  await context.filter({ hasText: "/notes · b / q" }).waitFor();
+  await page.goto(base + "?entry=" + encodeURIComponent("/"));
+  await context.filter({ hasText: "/notes · b / q" }).waitFor();
+  await page.getByRole("combobox", { name: "Select client", exact: true }).selectOption("");
+  await context.filter({ hasText: "/notes · all / all" }).waitFor();
+  await page.reload();
+  await context.filter({ hasText: "/notes · all / all" }).waitFor();
+  await page.getByRole("combobox", { name: "Select client", exact: true }).selectOption("b");
+  await context.filter({ hasText: "/notes · b / q" }).waitFor();
+  await page.goto(base + "?account=different-account");
+  await context.filter({ hasText: "/board · a / p" }).waitFor();
   assert.deepEqual(errors, []);
   console.log(
     "Context/navigation/preferences checks passed (direct links, Back, recovery, keyboard, 320/390px).",

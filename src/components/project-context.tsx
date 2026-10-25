@@ -14,10 +14,14 @@ export function useProjectContext(
   const ws = useWorkspace();
   const location = useRouterState({ select: (s) => s.location });
   const navigate = useNavigate();
-  const { remember } = useBoardMemory();
+  const { remember, search: remembered, ready } = useBoardMemory();
   const requested = boardSearchContext(location.search);
   // A direct asset link must not open under an unrelated default project.
-  const search = assetProjectId ? { projectId: assetProjectId } : requested;
+  const search = assetProjectId
+    ? { projectId: assetProjectId }
+    : Object.keys(requested).length
+      ? requested
+      : remembered;
   const result = resolveProjectContext(
     ws.data?.clients ?? [],
     ws.data?.projects ?? [],
@@ -27,12 +31,16 @@ export function useProjectContext(
   const clientId = result.search.clientId;
   const projectId = result.search.projectId;
   useEffect(() => {
-    if (sync && ws.data && !result.invalid && isBoardPath(location.pathname))
+    if (ready && sync && ws.data && !result.invalid && isBoardPath(location.pathname))
       remember({ ...(clientId ? { clientId } : {}), ...(projectId ? { projectId } : {}) });
-  }, [sync, ws.data, result.invalid, location.pathname, clientId, projectId, remember]);
+  }, [ready, sync, ws.data, result.invalid, location.pathname, clientId, projectId, remember]);
   useEffect(() => {
-    if (!sync || !ws.data || result.invalid) return;
-    if (requested.clientId === clientId && requested.projectId === projectId) return;
+    if (!ready || !sync || !ws.data || result.invalid) return;
+    if (
+      (requested.clientId || undefined) === clientId &&
+      (requested.projectId || undefined) === projectId
+    )
+      return;
     void navigate({
       to: location.pathname,
       search: { ...location.search, clientId, projectId },
@@ -49,23 +57,27 @@ export function useProjectContext(
     location.search,
     navigate,
     sync,
+    ready,
   ]);
   function select(next: ProjectSearch) {
     // Remove record IDs when changing scope; routing blockers protect editor drafts.
-    void navigate({ to: location.pathname, search: next });
+    void navigate({ to: location.pathname, search: { clientId: "", projectId: "", ...next } });
   }
-  return { ...result, select, loading: ws.isPending, error: ws.isError, retry: ws.refetch };
+  return {
+    ...result,
+    select,
+    loading: ws.isPending || !ready,
+    error: ws.isError,
+    retry: ws.refetch,
+  };
 }
 
 export function ProjectContextPicker({ disabled = false }: { disabled?: boolean }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const context = useProjectContext(false, undefined, false);
   return (
-    <section
-      aria-label="Current project"
-      className="mb-4 min-w-0 rounded-lg border border-border bg-card p-3"
-    >
-      <p className="mb-2 text-xs font-medium text-muted-foreground">
+    <section aria-label="Current project" className="mb-5 min-w-0 border-b border-border pb-4">
+      <p className="mb-2 text-xs font-medium text-muted-foreground sr-only">
         Board context ·{" "}
         {context.loading
           ? "Loading projects…"
