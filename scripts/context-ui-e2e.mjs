@@ -87,6 +87,13 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(base + "?entry=" + encodeURIComponent("/board?clientId=a&projectId=p"));
   await context.filter({ hasText: "/board · a / p" }).waitFor();
+  // Verify desktop sidebar collapse and expand
+  const collapseBtn = page.getByRole("button", { name: "Collapse sidebar", exact: true });
+  await collapseBtn.click();
+  assert.equal(await page.locator("aside").getAttribute("data-collapsed"), "true");
+  const expandBtn = page.getByRole("button", { name: "Expand sidebar", exact: true });
+  await expandBtn.click();
+  assert.equal(await page.locator("aside").getAttribute("data-collapsed"), "false");
   const selector = page.getByRole("combobox", { name: "Select client", exact: true });
   await selector.focus();
   await page.keyboard.press("ArrowDown");

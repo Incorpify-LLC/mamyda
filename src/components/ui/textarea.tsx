@@ -1,4 +1,5 @@
 import {
+  type ChangeEvent,
   type TextareaHTMLAttributes,
   forwardRef,
   useCallback,
@@ -6,11 +7,44 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  Bold,
+  CheckSquare,
+  Code,
+  Heading,
+  Italic,
+  Link2,
+  List,
+  ListOrdered,
+  Quote,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownView } from "@/components/markdown-view";
 import { useEditorDraftContext } from "@/components/editor-draft-context";
 import { draftTitle, editorDraftKey, readEditorDraft, type EditorDraft } from "@/lib/editor-drafts";
 import { encryptNote, decryptNote, unlockPrivateKey } from "@/lib/vault-crypto";
+import {
+  applyMarkdownKeyCommand,
+  applyMarkdownToolbarAction,
+  normalizeTabIndent,
+  type MarkdownToolbarAction,
+} from "@/lib/markdown-editor";
+
+const TOOLBAR_ITEMS: {
+  action: MarkdownToolbarAction;
+  label: string;
+  icon: typeof Bold;
+}[] = [
+  { action: "heading", label: "Heading", icon: Heading },
+  { action: "bold", label: "Bold", icon: Bold },
+  { action: "italic", label: "Italic", icon: Italic },
+  { action: "bullet-list", label: "Bullet list", icon: List },
+  { action: "numbered-list", label: "Numbered list", icon: ListOrdered },
+  { action: "checklist", label: "Checklist", icon: CheckSquare },
+  { action: "link", label: "Link", icon: Link2 },
+  { action: "code", label: "Code", icon: Code },
+  { action: "quote", label: "Quote", icon: Quote },
+];
 
 export const Textarea = forwardRef<
   HTMLTextAreaElement,
@@ -19,6 +53,8 @@ export const Textarea = forwardRef<
     draftName?: string;
     sensitive?: boolean;
     encryptedDraftOnly?: boolean;
+    markdownToolbar?: boolean;
+    onValueChange?: (value: string) => void;
     onRestoreDraft?: (body: string, encrypted: boolean) => void;
   }
 >(function Textarea(
@@ -28,12 +64,24 @@ export const Textarea = forwardRef<
     draftName,
     sensitive = false,
     encryptedDraftOnly = false,
+    markdownToolbar = false,
+    onValueChange,
     onRestoreDraft,
     onChange,
+    onKeyDown,
     ...props
   },
   ref,
 ) {
+  const internalRef = useRef<HTMLTextAreaElement | null>(null);
+  const setTextareaRef = useCallback(
+    (node: HTMLTextAreaElement | null) => {
+      internalRef.current = node;
+      if (typeof ref === "function") ref(node);
+      else if (ref) ref.current = node;
+    },
+    [ref],
+  );
   const context = useEditorDraftContext();
   const key =
     context.userId && draftId ? editorDraftKey(context.userId, context.scope, draftId) : null;
@@ -209,25 +257,83 @@ export const Textarea = forwardRef<
       if (alive.current) setRestoring(false);
     }
   }
+  function emitEdit(nextValue: string, selectionStart: number, selectionEnd: number) {
+    userEdited.current = true;
+    onValueChange?.(nextValue);
+    if (onChange) {
+      const target = internalRef.current ?? ({ value: nextValue } as HTMLTextAreaElement);
+      target.value = nextValue;
+      onChange({
+        target,
+        currentTarget: target,
+      } as ChangeEvent<HTMLTextAreaElement>);
+    }
+    requestAnimationFrame(() => {
+      const el = internalRef.current;
+      if (el && !preview) {
+        el.focus();
+        try {
+          el.setSelectionRange(selectionStart, selectionEnd);
+        } catch {}
+      }
+    });
+  }
+
+  function handleToolbarAction(action: MarkdownToolbarAction) {
+    if (props.disabled || props.readOnly || Boolean(recovery)) return;
+    const current = String(props.value ?? internalRef.current?.value ?? "");
+    const el = internalRef.current;
+    const start = el ? el.selectionStart : current.length;
+    const end = el ? el.selectionEnd : current.length;
+    const result = applyMarkdownToolbarAction(current, start, end, action);
+    if (preview) setPreview(false);
+    emitEdit(result.value, result.selectionStart, result.selectionEnd);
+  }
+
+  const isMono = Boolean(className?.includes("font-mono"));
+
   return (
     <div className="min-w-0 space-y-2">
-      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <div role="group" aria-label="Content view" className="flex gap-1">
-          {([false, true] as const).map((mode) => (
-            <button
-              key={String(mode)}
-              type="button"
-              aria-pressed={preview === mode}
-              disabled={props.disabled}
-              onClick={() => setPreview(mode)}
-              className={cn(
-                "rounded px-2 py-1 hover:bg-muted",
-                preview === mode && "bg-muted font-medium text-foreground",
-              )}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Content view" className="flex gap-1">
+            {([false, true] as const).map((mode) => (
+              <button
+                key={String(mode)}
+                type="button"
+                aria-pressed={preview === mode}
+                disabled={props.disabled}
+                onClick={() => setPreview(mode)}
+                className={cn(
+                  "rounded px-2 py-1 hover:bg-muted",
+                  preview === mode && "bg-muted font-medium text-foreground",
+                )}
+              >
+                {mode ? "Preview" : "Edit"}
+              </button>
+            ))}
+          </div>
+          {markdownToolbar && (
+            <div
+              role="toolbar"
+              aria-label="Markdown formatting"
+              className="flex flex-wrap items-center gap-0.5 rounded-md border border-border bg-muted/40 p-0.5"
             >
-              {mode ? "Preview" : "Edit"}
-            </button>
-          ))}
+              {TOOLBAR_ITEMS.map(({ action, label, icon: Icon }) => (
+                <button
+                  key={action}
+                  type="button"
+                  aria-label={label}
+                  title={label}
+                  disabled={props.disabled || props.readOnly || Boolean(recovery)}
+                  onClick={() => handleToolbarAction(action)}
+                  className="inline-flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
+                >
+                  <Icon className="size-3.5" aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <span>Markdown supported</span>
       </div>
@@ -273,7 +379,8 @@ export const Textarea = forwardRef<
         </div>
       )}
       <textarea
-        ref={ref}
+        ref={setTextareaRef}
+        style={{ tabSize: 2, ...props.style }}
         className={cn(
           "min-h-28 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground",
           className,
@@ -281,13 +388,46 @@ export const Textarea = forwardRef<
         {...props}
         readOnly={props.readOnly || Boolean(recovery)}
         hidden={preview}
+        onKeyDown={(event) => {
+          onKeyDown?.(event);
+          if (event.defaultPrevented || props.disabled || props.readOnly || Boolean(recovery)) {
+            return;
+          }
+          if (
+            markdownToolbar &&
+            (event.key === "Tab" || (event.key === "Enter" && !event.metaKey && !event.ctrlKey))
+          ) {
+            const el = event.currentTarget;
+            const current = String(props.value ?? el.value ?? "");
+            const command = applyMarkdownKeyCommand(
+              current,
+              el.selectionStart,
+              el.selectionEnd,
+              event.key,
+              event.shiftKey,
+            );
+            if (command) {
+              event.preventDefault();
+              emitEdit(command.value, command.selectionStart, command.selectionEnd);
+            }
+          }
+        }}
         onChange={(event) => {
           userEdited.current = true;
+          if (markdownToolbar && event.target.value.includes("\t")) {
+            event.target.value = normalizeTabIndent(event.target.value);
+          }
+          onValueChange?.(event.target.value);
           onChange?.(event);
         }}
       />
       {preview && !props.disabled && (
-        <div className="min-h-28 rounded-lg border border-input bg-card px-3 py-3">
+        <div
+          className={cn(
+            "min-h-28 rounded-lg border border-input bg-card px-3 py-3",
+            isMono && "font-mono",
+          )}
+        >
           <MarkdownView>{String(props.value || "") || "Nothing to preview yet."}</MarkdownView>
         </div>
       )}

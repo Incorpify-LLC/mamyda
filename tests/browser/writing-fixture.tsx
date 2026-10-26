@@ -52,6 +52,8 @@ function Fixture() {
           draftName={name}
           aria-label="Body"
           draftId="note:new"
+          markdownToolbar
+          className="font-mono"
           sensitive={sensitive}
           value={body}
           onChange={(e) => setBody(e.target.value)}
