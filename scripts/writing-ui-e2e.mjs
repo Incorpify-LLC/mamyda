@@ -76,6 +76,17 @@ try {
   await page.getByLabel("Body", { exact: true }).fill("   ");
   await page.reload();
   assert.equal(await page.getByRole("button", { name: "Restore draft", exact: true }).count(), 0);
+  // Verify Markdown toolbar, 2-space list tabbing, and monospace font in the editor
+  const editor = page.getByLabel("Body", { exact: true });
+  const fontFamily = await editor.evaluate((el) => getComputedStyle(el).fontFamily);
+  assert.match(fontFamily, /monospace|Mono|Consolas|Courier/i);
+  await page.getByRole("button", { name: "Bullet list", exact: true }).click();
+  await editor.pressSequentially("Parent item");
+  await editor.press("Enter");
+  await editor.press("Tab");
+  await editor.pressSequentially("Nested item");
+  assert.equal(await editor.inputValue(), "- Parent item\n  - Nested item");
+  await page.getByRole("button", { name: "Simulate successful save" }).click();
   for (const width of [320, 390, 1280]) {
     await page.setViewportSize({ width, height: 844 });
     assert.equal(
