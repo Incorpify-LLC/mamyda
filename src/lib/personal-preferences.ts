@@ -4,6 +4,30 @@ export type PersonalPreferences = {
   taskView: "auto" | "list" | "kanban";
 };
 export const PREFERENCES_EVENT = "mamyda-preferences-changed";
+export const SIDEBAR_COLLAPSED_KEY = "mamyda-sidebar-collapsed";
+
+export function readSidebarCollapsed(storage: Pick<Storage, "getItem">): boolean {
+  try {
+    return storage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function writeSidebarCollapsed(
+  storage: Pick<Storage, "setItem">,
+  collapsed: boolean,
+): boolean {
+  try {
+    storage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "true" : "false");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event(PREFERENCES_EVENT));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 export function readPreferences(storage: Pick<Storage, "getItem">): PersonalPreferences {
   const get = (key: string) => {
     try {

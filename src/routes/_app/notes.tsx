@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Folder } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useProjectContext } from "@/components/project-context";
 import { EditorFeedback } from "@/components/editor-feedback";
@@ -23,6 +24,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { LLMEditButton } from "@/components/llm-edit-button";
 import { boardSearchContext } from "@/lib/board-navigation";
+import {
+  DEFAULT_NOTE_PROJECT_NAME,
+  groupNotesByProject,
+  resolveDefaultNoteProjectId,
+} from "@/lib/notes-grouping";
 
 export const Route = createFileRoute("/_app/notes")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -83,6 +89,22 @@ function NotesPage() {
     () => new Map((ws.data?.projects ?? []).map((p) => [p.id, p])),
     [ws.data],
   );
+
+  const groupedNotes = useMemo(
+    () => groupNotesByProject(visible, ws.data?.projects ?? []),
+    [visible, ws.data?.projects],
+  );
+
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+
+  function toggleGroup(groupKey: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  }
 
   const liveTags = extractTags(current ? draft : "");
 
@@ -183,9 +205,13 @@ function NotesPage() {
           }
           onClick={() =>
             protection.request(() => {
+              const defaultProjectId = resolveDefaultNoteProjectId(
+                ws.data?.projects ?? [],
+                context.project?.id ?? null,
+              );
               setCurrent({
                 id: "",
-                projectId: context.project?.id ?? null,
+                projectId: defaultProjectId,
                 title: "",
                 body: "",
                 tags: [],
@@ -200,246 +226,285 @@ function NotesPage() {
         </Button>
       }
     >
-      {protection.dialog}
-      <p className="mb-4 text-sm text-muted-foreground">
-        Link a note to a project below, or use #project-slug in the text. Free tags still work.
-      </p>
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => setFilter(null)}
-          className={cn(
-            "rounded-full px-2.5 py-1 text-xs",
-            !filter ? "bg-foreground text-background" : "bg-muted",
-          )}
-        >
-          All
-        </button>
-        {allTags.map((t) => (
+      <div className="font-mono">
+        {protection.dialog}
+        <p className="mb-4 text-sm text-muted-foreground">
+          Link a note to a project below, or use #project-slug in the text. Notes without a project
+          default to {DEFAULT_NOTE_PROJECT_NAME}. Free tags still work.
+        </p>
+        <div className="mb-4 flex flex-wrap gap-1.5">
           <button
-            key={t}
             type="button"
-            onClick={() => setFilter(t)}
+            onClick={() => setFilter(null)}
             className={cn(
               "rounded-full px-2.5 py-1 text-xs",
-              filter === t ? "bg-foreground text-background" : "bg-muted",
+              !filter ? "bg-foreground text-background" : "bg-muted",
             )}
           >
-            #{t}
+            All
           </button>
-        ))}
-      </div>
-      <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
-        <div className="space-y-2">
-          <EditorFeedback
-            loading={list.isPending || ws.isPending}
-            error={list.isError || ws.isError}
-            empty={!context.invalid && visible.length === 0}
-            emptyText="No notes match this view. Choose New note to start."
-            onRetry={() => {
-              void ws.refetch();
-              void list.refetch();
-            }}
-          />
-          {visible.map((n) => (
+          {allTags.map((t) => (
             <button
-              key={n.id}
+              key={t}
               type="button"
-              disabled={protection.saving || protection.recoveryPending || llmBusy}
-              onClick={() =>
-                protection.request(() => {
-                  setCurrent(n);
-                  setDraft(n.body);
-                })
-              }
+              onClick={() => setFilter(t)}
               className={cn(
-                "w-full rounded-lg border px-3 py-2 text-left",
-                current?.id === n.id ? "border-primary bg-card" : "border-border bg-card/60",
+                "rounded-full px-2.5 py-1 text-xs",
+                filter === t ? "bg-foreground text-background" : "bg-muted",
               )}
             >
-              <p className="text-sm font-medium">{n.title}</p>
-              {n.encrypted && <p className="text-xs text-muted-foreground">🔒 Content encrypted</p>}
-              <p className="text-xs text-muted-foreground">
-                {n.updatedAt ? formatDay(n.updatedAt) : ""}
-                {n.projectId ? ` · ${projectById.get(n.projectId)?.name ?? ""}` : ""}
-              </p>
+              #{t}
             </button>
           ))}
         </div>
+        <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
+          <div className="space-y-3" aria-label="Notes by project">
+            <EditorFeedback
+              loading={list.isPending || ws.isPending}
+              error={list.isError || ws.isError}
+              empty={!context.invalid && visible.length === 0}
+              emptyText="No notes match this view. Choose New note to start."
+              onRetry={() => {
+                void ws.refetch();
+                void list.refetch();
+              }}
+            />
+            {groupedNotes.map((group) => {
+              const isCollapsed = collapsedGroups.has(group.groupKey);
+              return (
+                <div
+                  key={group.groupKey}
+                  className="rounded-lg border border-border bg-card/40 p-2"
+                >
+                  <button
+                    type="button"
+                    aria-expanded={!isCollapsed}
+                    onClick={() => toggleGroup(group.groupKey)}
+                    className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs font-semibold tracking-wide text-foreground hover:bg-muted"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5 truncate">
+                      {isCollapsed ? (
+                        <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                      )}
+                      <Folder className="size-3.5 shrink-0 text-primary" />
+                      <span className="truncate">{group.projectName}</span>
+                    </span>
+                    <Badge tone="muted">{group.notes.length}</Badge>
+                  </button>
+                  {!isCollapsed && (
+                    <div className="mt-1.5 space-y-1.5 pl-2">
+                      {group.notes.map((n) => (
+                        <button
+                          key={n.id}
+                          type="button"
+                          disabled={protection.saving || protection.recoveryPending || llmBusy}
+                          onClick={() =>
+                            protection.request(() => {
+                              setCurrent(n);
+                              setDraft(n.body);
+                            })
+                          }
+                          className={cn(
+                            "w-full rounded-lg border px-3 py-2 text-left",
+                            current?.id === n.id
+                              ? "border-primary bg-card"
+                              : "border-border bg-card/60",
+                          )}
+                        >
+                          <p className="text-sm font-medium">{n.title}</p>
+                          {n.encrypted && (
+                            <p className="text-xs text-muted-foreground">🔒 Content encrypted</p>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            {n.updatedAt ? formatDay(n.updatedAt) : ""}
+                            {` · ${group.projectName}`}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
-        {current ? (
-          <Card className="p-5">
-            <Label htmlFor="note-visible-title">Note name (visible while encrypted)</Label>
-            <Input
-              id="note-visible-title"
-              className="mb-3"
-              value={titleDraft}
-              disabled={protection.saving || (Boolean(current.encrypted) && !unlocked)}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              placeholder="Untitled"
-            />
-            <ContentProtection
-              key={current.id || "new-note"}
-              profile={ws.data?.profile}
-              kind="note"
-              id={current.id}
-              encrypted={Boolean(current.encrypted)}
-              enabled={encryptContent}
-              unlocked={unlocked}
-              disabled={protection.saving || protection.recoveryPending || llmBusy}
-              onToggle={setEncryptContent}
-              onUnlock={(body) => {
-                setDraft(body);
-                setCurrent({ ...current, body });
-                setUnlocked(true);
-              }}
-              onLock={() => {
-                if (
-                  draft !== current.body &&
-                  !window.confirm("Discard unsaved changes and lock this note?")
-                )
-                  return;
-                setDraft("");
-                setCurrent({ ...current, body: "" });
-                setUnlocked(false);
-                protection.clear();
-              }}
-            />
-            <Textarea
-              draftId={`note:${current.id || "new"}`}
-              encryptedDraftOnly
-              draftName={titleDraft}
-              sensitive={encryptContent || Boolean(current.encrypted)}
-              onRestoreDraft={(body, encrypted) => {
-                setDraft(body);
-                if (encrypted) {
-                  setEncryptContent(true);
+          {current ? (
+            <Card className="p-5 font-mono">
+              <Label htmlFor="note-visible-title">Note name (visible while encrypted)</Label>
+              <Input
+                id="note-visible-title"
+                className="mb-3 font-mono"
+                value={titleDraft}
+                disabled={protection.saving || (Boolean(current.encrypted) && !unlocked)}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                placeholder="Untitled"
+              />
+              <ContentProtection
+                key={current.id || "new-note"}
+                profile={ws.data?.profile}
+                kind="note"
+                id={current.id}
+                encrypted={Boolean(current.encrypted)}
+                enabled={encryptContent}
+                unlocked={unlocked}
+                disabled={protection.saving || protection.recoveryPending || llmBusy}
+                onToggle={setEncryptContent}
+                onUnlock={(body) => {
+                  setDraft(body);
+                  setCurrent({ ...current, body });
                   setUnlocked(true);
-                }
-              }}
-              aria-label="Note body"
-              disabled={
-                protection.saving ||
-                llmBusy ||
-                protection.recoveryPending ||
-                (Boolean(current.encrypted) && !unlocked)
-              }
-              className="min-h-72 font-sans"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder={
-                current.encrypted && !unlocked
-                  ? "Encrypted content — unlock to view"
-                  : "Write. Use #tags."
-              }
-            />
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {liveTags.map((t) => (
-                <Badge
-                  key={t}
-                  tone={
-                    projectById.has(t) || [...projectById.values()].some((p) => p.slug === t)
-                      ? "primary"
-                      : "muted"
+                }}
+                onLock={() => {
+                  if (
+                    draft !== current.body &&
+                    !window.confirm("Discard unsaved changes and lock this note?")
+                  )
+                    return;
+                  setDraft("");
+                  setCurrent({ ...current, body: "" });
+                  setUnlocked(false);
+                  protection.clear();
+                }}
+              />
+              <Textarea
+                draftId={`note:${current.id || "new"}`}
+                encryptedDraftOnly
+                markdownToolbar
+                draftName={titleDraft}
+                sensitive={encryptContent || Boolean(current.encrypted)}
+                onRestoreDraft={(body, encrypted) => {
+                  setDraft(body);
+                  if (encrypted) {
+                    setEncryptContent(true);
+                    setUnlocked(true);
                   }
-                >
-                  #{t}
-                </Badge>
-              ))}
-            </div>
-            <div className="mt-4 max-w-sm space-y-1.5">
-              <Label htmlFor="note-project">Project</Label>
-              <select
-                id="note-project"
-                aria-label="Link note to project"
-                disabled={protection.saving || protection.recoveryPending}
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-                value={current.projectId ?? ""}
-                onChange={(e) => setCurrent({ ...current, projectId: e.target.value || null })}
-              >
-                <option value="">No project</option>
-                {current.projectId && projectById.get(current.projectId)?.archived && (
-                  <option value={current.projectId}>
-                    {projectById.get(current.projectId)?.name} (archived)
-                  </option>
-                )}
-                {(ws.data?.projects ?? [])
-                  .filter((project) => !project.archived)
-                  .map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <LLMEditButton
-                title={titleDraft}
-                body={draft}
+                }}
+                aria-label="Note body"
                 disabled={
                   protection.saving ||
-                  protection.recoveryPending ||
                   llmBusy ||
+                  protection.recoveryPending ||
                   (Boolean(current.encrypted) && !unlocked)
                 }
-                onBusyChange={setLLMBusy}
-                onEdited={setDraft}
-              />
-              <LLMEditButton
-                kind="spellcheck"
-                label="Correct spelling with LLM"
-                title={titleDraft}
-                body={draft}
-                disabled={
-                  protection.saving ||
-                  protection.recoveryPending ||
-                  llmBusy ||
-                  (Boolean(current.encrypted) && !unlocked)
+                className="min-h-72 font-mono"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={
+                  current.encrypted && !unlocked
+                    ? "Encrypted content — unlock to view"
+                    : "Write. Use #tags."
                 }
-                onBusyChange={setLLMBusy}
-                onEdited={setDraft}
               />
-              <Button
-                disabled={
-                  protection.saving ||
-                  llmBusy ||
-                  (Boolean(current.encrypted) && !unlocked) ||
-                  protection.recoveryPending
-                }
-                onClick={() => void protection.save()}
-              >
-                {protection.saving ? "Saving…" : "Save"}
-              </Button>
-              {current.id && (
-                <Button
-                  variant="ghost"
-                  disabled={protection.saving || protection.recoveryPending || llmBusy}
-                  onClick={async () => {
-                    if (!window.confirm("Delete this note and any unsaved changes?")) return;
-                    try {
-                      await deleteNote({ data: current.id });
-                      protection.clear();
-                      setCurrent(null);
-                      setDraft("");
-                      await list.refetch();
-                    } catch (e) {
-                      toast.error(
-                        e instanceof Error ? e.message : "Delete failed; your note was kept.",
-                      );
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {liveTags.map((t) => (
+                  <Badge
+                    key={t}
+                    tone={
+                      projectById.has(t) || [...projectById.values()].some((p) => p.slug === t)
+                        ? "primary"
+                        : "muted"
                     }
-                  }}
+                  >
+                    #{t}
+                  </Badge>
+                ))}
+              </div>
+              <div className="mt-4 max-w-sm space-y-1.5">
+                <Label htmlFor="note-project">Project</Label>
+                <select
+                  id="note-project"
+                  aria-label="Link note to project"
+                  disabled={protection.saving || protection.recoveryPending}
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 font-mono text-sm"
+                  value={current.projectId ?? ""}
+                  onChange={(e) => setCurrent({ ...current, projectId: e.target.value || null })}
                 >
-                  Delete
+                  <option value="">{DEFAULT_NOTE_PROJECT_NAME} (default)</option>
+                  {current.projectId && projectById.get(current.projectId)?.archived && (
+                    <option value={current.projectId}>
+                      {projectById.get(current.projectId)?.name} (archived)
+                    </option>
+                  )}
+                  {(ws.data?.projects ?? [])
+                    .filter((project) => !project.archived)
+                    .map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <LLMEditButton
+                  title={titleDraft}
+                  body={draft}
+                  disabled={
+                    protection.saving ||
+                    protection.recoveryPending ||
+                    llmBusy ||
+                    (Boolean(current.encrypted) && !unlocked)
+                  }
+                  onBusyChange={setLLMBusy}
+                  onEdited={setDraft}
+                />
+                <LLMEditButton
+                  kind="spellcheck"
+                  label="Correct spelling with LLM"
+                  title={titleDraft}
+                  body={draft}
+                  disabled={
+                    protection.saving ||
+                    protection.recoveryPending ||
+                    llmBusy ||
+                    (Boolean(current.encrypted) && !unlocked)
+                  }
+                  onBusyChange={setLLMBusy}
+                  onEdited={setDraft}
+                />
+                <Button
+                  disabled={
+                    protection.saving ||
+                    llmBusy ||
+                    (Boolean(current.encrypted) && !unlocked) ||
+                    protection.recoveryPending
+                  }
+                  onClick={() => void protection.save()}
+                >
+                  {protection.saving ? "Saving…" : "Save"}
                 </Button>
-              )}
-            </div>
-          </Card>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Select a note, or choose New note to start.
-          </p>
-        )}
+                {current.id && (
+                  <Button
+                    variant="ghost"
+                    disabled={protection.saving || protection.recoveryPending || llmBusy}
+                    onClick={async () => {
+                      if (!window.confirm("Delete this note and any unsaved changes?")) return;
+                      try {
+                        await deleteNote({ data: current.id });
+                        protection.clear();
+                        setCurrent(null);
+                        setDraft("");
+                        await list.refetch();
+                      } catch (e) {
+                        toast.error(
+                          e instanceof Error ? e.message : "Delete failed; your note was kept.",
+                        );
+                      }
+                    }}
+                  >
+                    Delete
+                  </Button>
+                )}
+              </div>
+            </Card>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Select a note, or choose New note to start.
+            </p>
+          )}
+        </div>
       </div>
     </AppShell>
   );

@@ -1,6 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Columns3,
   FileText,
   LayoutDashboard,
@@ -21,7 +23,12 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Title as SheetTitle } from "@radix-ui/react-dialog";
 import { ProjectContextPicker } from "@/components/project-context";
 import { useBoardMemory } from "@/components/board-context-memory";
-import { readPreferences, PREFERENCES_EVENT } from "@/lib/personal-preferences";
+import {
+  readPreferences,
+  readSidebarCollapsed,
+  writeSidebarCollapsed,
+  PREFERENCES_EVENT,
+} from "@/lib/personal-preferences";
 import { GlobalSearch } from "@/components/global-search";
 import { BOARD_SECTIONS, boardSearchContext, isBoardPath } from "@/lib/board-navigation";
 
@@ -35,7 +42,15 @@ const NAV = [
   { to: "/preferences", label: "Preferences", icon: Settings },
 ] as const;
 
-function NavLinks({ onNavigate, compact }: { onNavigate?: () => void; compact?: boolean }) {
+function NavLinks({
+  onNavigate,
+  compact,
+  collapsed = false,
+}: {
+  onNavigate?: () => void;
+  compact?: boolean;
+  collapsed?: boolean;
+}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const location = useRouterState({ select: (s) => s.location });
   const search = location.search;
@@ -62,16 +77,19 @@ function NavLinks({ onNavigate, compact }: { onNavigate?: () => void; compact?: 
                 : {}
             }
             onClick={onNavigate}
+            title={collapsed ? item.label : undefined}
+            aria-label={collapsed ? item.label : undefined}
             className={cn(
               "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
               compact && "flex-col gap-1 px-2 py-1.5 text-[11px]",
+              collapsed && "justify-center px-2 py-2",
               active
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
-            <Icon className={compact ? "size-4" : "size-4"} strokeWidth={1.75} />
-            {item.label}
+            <Icon className="size-4 shrink-0" strokeWidth={1.75} />
+            <span className={cn(collapsed && "sr-only")}>{item.label}</span>
           </Link>
         );
       })}
@@ -94,6 +112,7 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const [dark, setDark] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const location = useRouterState({ select: (s) => s.location });
   const search = location.search;
@@ -108,6 +127,7 @@ export function AppShell({
       const next =
         preferences.theme === "dark" || (preferences.theme === "system" && media.matches);
       setDark(next);
+      setCollapsed(readSidebarCollapsed(localStorage));
       document.documentElement.classList.toggle("dark", next);
       document.documentElement.dataset.density = preferences.density;
     };
@@ -121,6 +141,12 @@ export function AppShell({
       media.removeEventListener("change", apply);
     };
   }, []);
+
+  function toggleSidebar() {
+    const next = !collapsed;
+    setCollapsed(next);
+    writeSidebarCollapsed(window.localStorage, next);
+  }
 
   function toggleTheme() {
     const next = !dark;
@@ -136,17 +162,51 @@ export function AppShell({
 
   return (
     <div className="min-h-dvh bg-background">
-      <aside className="fixed inset-y-0 left-0 hidden w-56 flex-col border-r border-border bg-card/80 px-3 py-5 md:flex">
-        <div className="px-3 pb-6">
-          <p className="font-display text-xl font-semibold tracking-tight">Mamyda</p>
+      <aside
+        data-collapsed={collapsed ? "true" : "false"}
+        className={cn(
+          "fixed inset-y-0 left-0 hidden flex-col border-r border-border bg-card/80 py-5 transition-[width] duration-200 md:flex",
+          collapsed ? "w-14 px-1.5" : "w-56 px-3",
+        )}
+      >
+        <div
+          className={cn(
+            "flex items-center pb-6",
+            collapsed ? "justify-center px-0" : "justify-between px-3",
+          )}
+        >
+          {!collapsed && (
+            <p className="font-display text-xl font-semibold tracking-tight">Mamyda</p>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            title={collapsed ? "Expand sidebar (>)" : "Collapse sidebar (<)"}
+            className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            {collapsed ? (
+              <ChevronRight className="size-4" aria-hidden="true" />
+            ) : (
+              <ChevronLeft className="size-4" aria-hidden="true" />
+            )}
+          </Button>
         </div>
-        <NavLinks />
-        <div className="mt-auto border-t border-border px-1 pt-4">
+        <NavLinks collapsed={collapsed} />
+        <div
+          className={cn(
+            "mt-auto border-t border-border pt-4",
+            collapsed ? "overflow-hidden px-0" : "px-1",
+          )}
+        >
           <UserButton />
         </div>
       </aside>
 
-      <div className="md:pl-56">
+      <div className={cn("transition-[padding] duration-200", collapsed ? "md:pl-14" : "md:pl-56")}>
         <header className="sticky top-0 z-30 flex min-w-0 flex-wrap items-center gap-2 border-b border-border bg-background/90 px-3 py-3 backdrop-blur sm:gap-3 sm:px-4 md:flex-nowrap md:px-8">
           <Button
             variant="ghost"
